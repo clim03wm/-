@@ -428,34 +428,56 @@ def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
 
 def style_tracker(df: pd.DataFrame):
     def color_action(value):
+        value = str(value).upper()
+
         if value == "BUY":
-            return "background-color: #d9ead3; font-weight: bold"
+            return "background-color: #15803d; color: white; font-weight: 700;"
         if value == "SELL":
-            return "background-color: #f4cccc; font-weight: bold"
+            return "background-color: #b91c1c; color: white; font-weight: 700;"
         if value == "WATCH":
-            return "background-color: #fff2cc"
+            return "background-color: #ca8a04; color: black; font-weight: 700;"
+
         return ""
 
     def color_correct(value):
+        value = str(value).upper()
+
         if value == "YES":
-            return "background-color: #d9ead3; font-weight: bold"
+            return "background-color: #15803d; color: white; font-weight: 700;"
         if value == "NO":
-            return "background-color: #f4cccc; font-weight: bold"
+            return "background-color: #b91c1c; color: white; font-weight: 700;"
+        if value == "N/A":
+            return "background-color: #6b7280; color: white;"
+
+        return ""
+
+    def color_direction(value):
+        value = str(value).upper()
+
+        if value == "UP":
+            return "background-color: #dcfce7; color: #14532d; font-weight: 700;"
+        if value == "DOWN":
+            return "background-color: #fee2e2; color: #7f1d1d; font-weight: 700;"
+        if value == "NEUTRAL":
+            return "background-color: #e5e7eb; color: #111827; font-weight: 700;"
+
         return ""
 
     def color_return(value):
         try:
             if value > 0:
-                return "color: #137333; font-weight: bold"
+                return "color: #15803d; font-weight: 700;"
             if value < 0:
-                return "color: #a50e0e; font-weight: bold"
+                return "color: #b91c1c; font-weight: 700;"
         except Exception:
             pass
+
         return ""
 
     return (
         df.style
         .map(color_action, subset=["Action"])
+        .map(color_direction, subset=["Direction", "Actual Direction So Far"])
         .map(color_correct, subset=["Correct So Far"])
         .map(color_return, subset=["Change Since Monday %"])
         .format(
@@ -486,11 +508,12 @@ def style_money(df: pd.DataFrame):
     def color_num(value):
         try:
             if value > 0:
-                return "color: #137333; font-weight: bold"
+                return "color: #15803d; font-weight: 700;"
             if value < 0:
-                return "color: #a50e0e; font-weight: bold"
+                return "color: #b91c1c; font-weight: 700;"
         except Exception:
             pass
+
         return ""
 
     styled = df.style.format(format_map, na_rep="")
