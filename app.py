@@ -180,15 +180,30 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_line_chart_data(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
-    if not tickers:
+def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], monday_date: date) -> pd.DataFrame:
+    """
+    Builds Robinhood-style portfolio lines.
+
+    BUY/UP = long return
+    SELL/DOWN = short return, so returns are inverted
+    WATCH is ignored
+    """
+    if not model_rows:
         return pd.DataFrame()
 
     start_date = monday_date
     end_date = datetime.now().date() + timedelta(days=1)
-    series = []
 
-    for ticker in tickers:
+    buy_series = []
+    sell_series = []
+
+    for ticker, action, direction in model_rows:
+        action = str(action).upper()
+        direction = str(direction).upper()
+
+        if not ((action == "BUY" and direction == "UP") or (action == "SELL" and direction == "DOWN")):
+            continue
+
         symbol = yahoo_symbol(ticker)
 
         try:
@@ -231,18 +246,57 @@ def fetch_line_chart_data(tickers: tuple[str, ...], monday_date: date) -> pd.Dat
             else:
                 ref_price = float(monday_rows["close"].dropna().iloc[0])
 
-            pct = (df["close"] - ref_price) / ref_price * 100
-            pct.name = ticker
-            series.append(pct)
+            long_pct = (df["close"] - ref_price) / ref_price * 100
+
+            if action == "BUY" and direction == "UP":
+                long_pct.name = ticker
+                buy_series.append(long_pct)
+
+            if action == "SELL" and direction == "DOWN":
+                short_pct = -long_pct
+                short_pct.name = ticker
+                sell_series.append(short_pct)
 
         except Exception:
             continue
 
-    if not series:
+    chart_parts = []
+
+    if buy_series:
+        buy_df = pd.concat(buy_series, axis=1).sort_index()
+        chart_parts.append(buy_df.mean(axis=1).rename("BUY basket"))
+
+    if sell_series:
+        sell_df = pd.concat(sell_series, axis=1).sort_index()
+        chart_parts.append(sell_df.mean(axis=1).rename("SELL short basket"))
+
+    if buy_series or sell_series:
+        all_series = buy_series + sell_series
+        combined_df = pd.concat(all_series, axis=1).sort_index()
+        chart_parts.append(combined_df.mean(axis=1).rename("Combined active basket"))
+
+    if not chart_parts:
         return pd.DataFrame()
 
-    chart_df = pd.concat(series, axis=1).sort_index()
+    chart_df = pd.concat(chart_parts, axis=1).sort_index()
     return chart_df.dropna(how="all")
+
+
+def filter_chart_range(chart_df: pd.DataFrame, selected_range: str) -> pd.DataFrame:
+    if chart_df.empty:
+        return chart_df
+
+    now = datetime.now()
+
+    if selected_range == "Today":
+        start = datetime.combine(now.date(), time(0, 0))
+        return chart_df[chart_df.index >= start]
+
+    if selected_range == "Week":
+        start = datetime.combine(this_weeks_monday(now.date()), time(0, 0))
+        return chart_df[chart_df.index >= start]
+
+    return chart_df
 
 
 def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.DataFrame:
@@ -349,7 +403,9 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataF
 
 
 def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
-    valid = df[df["Correct So Far"].isin(["YES", "NO"])].copy()
+    # WATCH is intentionally excluded from summaries.
+    active = df[df["Action"].isin(["BUY", "SELL"])].copy()
+    valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
 
     if valid.empty:
         return pd.DataFrame(columns=[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"])
@@ -481,40 +537,52 @@ with tab_dashboard:
         st.stop()
 
     tickers = tuple(model_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
-    active_df = model_df[model_df["Action"].isin(["BUY", "SELL"])].copy()
-    active_tickers = tuple(active_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
+    model_rows = tuple(
+        model_df[["Ticker", "Action", "Direction"]]
+        .dropna()
+        .astype(str)
+        .itertuples(index=False, name=None)
+    )
 
     with st.spinner("Fetching prices and calculating performance..."):
         price_df = fetch_prices(tickers, monday_date)
         tracker_df = add_tracking_columns(model_df, price_df)
-        chart_df = fetch_line_chart_data(active_tickers, monday_date)
-
-    valid = tracker_df[tracker_df["Correct So Far"].isin(["YES", "NO"])].copy()
-    correct = int((valid["Correct So Far"] == "YES").sum()) if not valid.empty else 0
-    total = int(len(valid))
-    accuracy = correct / total * 100 if total else 0
-    avg_change = float(valid["Change Since Monday %"].mean()) if total else 0
+        portfolio_chart_df = fetch_position_return_series(model_rows, monday_date)
 
     active_valid = tracker_df[
         (tracker_df["Action"].isin(["BUY", "SELL"]))
         & (tracker_df["Correct So Far"].isin(["YES", "NO"]))
     ].copy()
+
     active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
     active_total = int(len(active_valid))
     active_accuracy = active_correct / active_total * 100 if active_total else 0
+    active_avg_change = float(active_valid["Change Since Monday %"].mean()) if active_total else 0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active calls", active_total)
     c2.metric("Active correct", active_correct)
     c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
-    c4.metric("Avg change since Monday", f"{avg_change:.2f}%")
+    c4.metric("Active avg change", f"{active_avg_change:.2f}%")
 
-    st.subheader("Active-call line chart")
-    st.caption("Percent change since this week's Monday reference price. Only BUY and SELL calls are charted.")
-    if chart_df.empty:
-        st.info("No chart data available yet.")
+    st.subheader("Portfolio performance")
+    chart_range = st.radio(
+        "Range",
+        ["Today", "Week", "All time"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    filtered_chart_df = filter_chart_range(portfolio_chart_df, chart_range)
+
+    st.caption(
+        "Equal-weight basket returns. BUY/UP is treated as long. SELL/DOWN is treated as short. WATCH is ignored."
+    )
+
+    if filtered_chart_df.empty:
+        st.info("No portfolio chart data available yet.")
     else:
-        st.line_chart(chart_df)
+        st.line_chart(filtered_chart_df)
 
     st.subheader("What-if portfolio")
     what_if_df = build_what_if(tracker_df, starting_capital)
