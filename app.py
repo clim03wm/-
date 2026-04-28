@@ -584,14 +584,16 @@ with tab_dashboard:
     else:
         import altair as alt
 
+        chart_data = filtered_chart_df.reset_index()
+        
+        first_col = chart_data.columns[0]
+        chart_data = chart_data.rename(columns={first_col: "Time"})
+        
         chart_data = (
-            filtered_chart_df
-            .reset_index()
-            .rename(columns={"index": "Time"})
+            chart_data
             .melt(id_vars="Time", var_name="Basket", value_name="Return %")
             .dropna()
         )
-
         line_chart = (
             alt.Chart(chart_data)
             .mark_line(strokeWidth=2.5)
