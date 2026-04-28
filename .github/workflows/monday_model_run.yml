@@ -1,0 +1,71 @@
+name: Monday Stock Signal Run
+
+on:
+  schedule:
+    # GitHub Actions cron uses UTC.
+    # This runs at 16:05 and 17:05 UTC every Monday.
+    # The Python check below only allows the run to continue when it is noon in New York.
+    - cron: "5 16,17 * * 1"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check if it is Monday noon Eastern
+        id: timecheck
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          now = datetime.now(ZoneInfo("America/New_York"))
+
+          # Monday = 0, noon hour = 12
+          should_run = now.weekday() == 0 and now.hour == 12
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"should_run={'true' if should_run else 'false'}\n")
+
+          print("New York time:", now)
+          print("Should run:", should_run)
+          PY
+
+      - name: Stop if not Monday noon Eastern
+        if: steps.timecheck.outputs.should_run != 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          echo "Not Monday noon Eastern. Skipping."
+          exit 0
+
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run weekly model and save dashboard CSV
+        run: |
+          python scripts/run_weekly_model.py --universe custom --output-limit 25
+
+      - name: Commit updated prediction files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add data/latest_predictions.csv data/history/ || true
+
+          git commit -m "Update weekly stock signal output" || echo "No changes to commit"
+          git push
