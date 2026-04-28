@@ -42,6 +42,11 @@ DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL
 25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
 
 
+def this_weeks_monday(today: date | None = None) -> date:
+    today = today or date.today()
+    return today - timedelta(days=today.weekday())
+
+
 def yahoo_symbol(ticker: str) -> str:
     return str(ticker).strip().upper().replace(".", "-")
 
@@ -56,7 +61,6 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
 
         parts = re.split(r"\s+", line)
 
-        # Rank Ticker Action Direction Conviction Edge Regime Score ExpMove% Setup Timestamp
         if len(parts) < 11:
             continue
 
@@ -175,6 +179,72 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_line_chart_data(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
+    if not tickers:
+        return pd.DataFrame()
+
+    start_date = monday_date
+    end_date = datetime.now().date() + timedelta(days=1)
+    series = []
+
+    for ticker in tickers:
+        symbol = yahoo_symbol(ticker)
+
+        try:
+            df = yf.download(
+                symbol,
+                start=start_date.isoformat(),
+                end=end_date.isoformat(),
+                interval="30m",
+                auto_adjust=True,
+                progress=False,
+                prepost=False,
+                threads=False,
+            )
+
+            if df is None or df.empty:
+                continue
+
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [c[0] for c in df.columns]
+
+            df = df.rename(columns=str.lower)
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+
+            if "close" not in df.columns or df["close"].dropna().empty:
+                continue
+
+            monday_rows = df[df.index.date == monday_date]
+            if monday_rows.empty:
+                continue
+
+            window_start = datetime.combine(monday_date, time(11, 30))
+            window_end = datetime.combine(monday_date, time(12, 30))
+            noon_window = monday_rows[
+                (monday_rows.index >= window_start)
+                & (monday_rows.index <= window_end)
+            ]
+
+            if not noon_window.empty:
+                ref_price = float(noon_window["close"].dropna().mean())
+            else:
+                ref_price = float(monday_rows["close"].dropna().iloc[0])
+
+            pct = (df["close"] - ref_price) / ref_price * 100
+            pct.name = ticker
+            series.append(pct)
+
+        except Exception:
+            continue
+
+    if not series:
+        return pd.DataFrame()
+
+    chart_df = pd.concat(series, axis=1).sort_index()
+    return chart_df.dropna(how="all")
+
+
 def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.DataFrame:
     out = model_df.merge(price_df, on="Ticker", how="left")
 
@@ -215,17 +285,15 @@ def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.D
     return out
 
 
-def build_what_if(tracker_df: pd.DataFrame, starting_capital: float, include_watch: bool) -> pd.DataFrame:
+def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataFrame:
     strategies = [
         (
             "BUY all BUY/UP stocks",
             (tracker_df["Action"] == "BUY") & (tracker_df["Direction"] == "UP"),
-            "active",
         ),
         (
             "SHORT all SELL/DOWN stocks",
             (tracker_df["Action"] == "SELL") & (tracker_df["Direction"] == "DOWN"),
-            "active",
         ),
         (
             "Combined active calls: BUY/UP + SELL/DOWN",
@@ -233,27 +301,12 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float, include_wat
                 ((tracker_df["Action"] == "BUY") & (tracker_df["Direction"] == "UP"))
                 | ((tracker_df["Action"] == "SELL") & (tracker_df["Direction"] == "DOWN"))
             ),
-            "active",
         ),
     ]
 
-    if include_watch:
-        strategies += [
-            (
-                "WATCH/UP paper basket",
-                (tracker_df["Action"] == "WATCH") & (tracker_df["Direction"] == "UP"),
-                "watch",
-            ),
-            (
-                "WATCH/DOWN paper basket",
-                (tracker_df["Action"] == "WATCH") & (tracker_df["Direction"] == "DOWN"),
-                "watch",
-            ),
-        ]
-
     rows = []
 
-    for name, mask, kind in strategies:
+    for name, mask in strategies:
         basket = tracker_df[mask].copy()
         returns = []
 
@@ -265,9 +318,9 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float, include_wat
             action = str(row.get("Action", "")).upper()
             direction = str(row.get("Direction", "")).upper()
 
-            if action in {"BUY", "WATCH"} and direction == "UP":
+            if action == "BUY" and direction == "UP":
                 returns.append(float(change))
-            elif action in {"SELL", "WATCH"} and direction == "DOWN":
+            elif action == "SELL" and direction == "DOWN":
                 returns.append(float(-change))
 
         if returns:
@@ -394,11 +447,27 @@ def style_money(df: pd.DataFrame):
 
 
 st.title("Manual Weekly Stock Signal Tracker")
-st.caption("Paste this week's model output. The tracker compares every stock to the Monday reference price, not daily percent change.")
+st.caption("Tracks this week's model output against this week's Monday reference price, not daily percent change.")
 
-with st.sidebar:
-    st.header("Settings")
-    monday_date = st.date_input("Monday reference date", value=date.today())
+if "raw_model_output" not in st.session_state:
+    st.session_state["raw_model_output"] = DEFAULT_TEXT
+
+tab_dashboard, tab_input = st.tabs(["Dashboard", "Paste model output"])
+
+with tab_input:
+    st.session_state["raw_model_output"] = st.text_area(
+        "Paste model output",
+        value=st.session_state["raw_model_output"],
+        height=360,
+    )
+    st.info("After editing this box, go back to the Dashboard tab. The tracker updates automatically.")
+
+model_df = parse_model_output(st.session_state["raw_model_output"])
+monday_date = this_weeks_monday()
+
+with tab_dashboard:
+    st.caption(f"Reference period: this week's Monday ({monday_date}) to now.")
+
     starting_capital = st.number_input(
         "What-if starting capital",
         min_value=100.0,
@@ -406,30 +475,19 @@ with st.sidebar:
         value=10_000.0,
         step=100.0,
     )
-    include_watch = st.toggle("Include WATCH paper baskets", value=True)
 
-raw_text = st.text_area(
-    "Paste model output",
-    value=DEFAULT_TEXT,
-    height=320,
-)
+    if model_df.empty:
+        st.warning("No valid rows found. Paste your model output in the second tab.")
+        st.stop()
 
-model_df = parse_model_output(raw_text)
-
-if model_df.empty:
-    st.warning("No valid rows found. Paste your model output table.")
-    st.stop()
-
-st.subheader("Parsed model output")
-st.dataframe(model_df, use_container_width=True, hide_index=True)
-
-if st.button("Fetch prices and calculate performance", type="primary"):
     tickers = tuple(model_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
+    active_df = model_df[model_df["Action"].isin(["BUY", "SELL"])].copy()
+    active_tickers = tuple(active_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
 
-    with st.spinner("Fetching Yahoo Finance prices..."):
+    with st.spinner("Fetching prices and calculating performance..."):
         price_df = fetch_prices(tickers, monday_date)
-
-    tracker_df = add_tracking_columns(model_df, price_df)
+        tracker_df = add_tracking_columns(model_df, price_df)
+        chart_df = fetch_line_chart_data(active_tickers, monday_date)
 
     valid = tracker_df[tracker_df["Correct So Far"].isin(["YES", "NO"])].copy()
     correct = int((valid["Correct So Far"] == "YES").sum()) if not valid.empty else 0
@@ -437,18 +495,33 @@ if st.button("Fetch prices and calculate performance", type="primary"):
     accuracy = correct / total * 100 if total else 0
     avg_change = float(valid["Change Since Monday %"].mean()) if total else 0
 
+    active_valid = tracker_df[
+        (tracker_df["Action"].isin(["BUY", "SELL"]))
+        & (tracker_df["Correct So Far"].isin(["YES", "NO"]))
+    ].copy()
+    active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
+    active_total = int(len(active_valid))
+    active_accuracy = active_correct / active_total * 100 if active_total else 0
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Tracked names", total)
-    c2.metric("Correct so far", correct)
-    c3.metric("Accuracy so far", f"{accuracy:.1f}%")
+    c1.metric("Active calls", active_total)
+    c2.metric("Active correct", active_correct)
+    c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
     c4.metric("Avg change since Monday", f"{avg_change:.2f}%")
+
+    st.subheader("Active-call line chart")
+    st.caption("Percent change since this week's Monday reference price. Only BUY and SELL calls are charted.")
+    if chart_df.empty:
+        st.info("No chart data available yet.")
+    else:
+        st.line_chart(chart_df)
+
+    st.subheader("What-if portfolio")
+    what_if_df = build_what_if(tracker_df, starting_capital)
+    st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
 
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
-
-    st.subheader("What-if portfolio")
-    what_if_df = build_what_if(tracker_df, starting_capital, include_watch)
-    st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -466,5 +539,3 @@ if st.button("Fetch prices and calculate performance", type="primary"):
         file_name=f"manual_weekly_tracker_{monday_date}.csv",
         mime="text/csv",
     )
-else:
-    st.info("Click the button after pasting this week's model output.")
