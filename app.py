@@ -578,49 +578,49 @@ with tab_dashboard:
     st.caption(
         "Equal-weight basket returns. BUY/UP is treated as long. SELL/DOWN is treated as short. WATCH is ignored."
     )
-    
-         if filtered_chart_df.empty:
-                st.info("No portfolio chart data available yet.")
-            else:
-                import altair as alt
-            
-                chart_data = (
-                    filtered_chart_df
-                    .reset_index()
-                    .rename(columns={"index": "Time"})
-                    .melt(id_vars="Time", var_name="Basket", value_name="Return %")
-                    .dropna()
-                )
-            
-                line_chart = (
-                    alt.Chart(chart_data)
-                    .mark_line(strokeWidth=2.5)
-                    .encode(
-                        x=alt.X("Time:T", title="Time"),
-                        y=alt.Y("Return %:Q", title="Return % since Monday"),
-                        color=alt.Color("Basket:N", title="Basket"),
-                        tooltip=[
-                            alt.Tooltip("Time:T", title="Time"),
-                            alt.Tooltip("Basket:N", title="Basket"),
-                            alt.Tooltip("Return %:Q", title="Return %", format=".2f"),
-                        ],
-                    )
-                )
-            
-                zero_line = (
-                    alt.Chart(pd.DataFrame({"Return %": [0]}))
-                    .mark_rule(color="gray", strokeDash=[6, 4], strokeWidth=2)
-                    .encode(y="Return %:Q")
-                )
-            
-                st.altair_chart(line_chart + zero_line, use_container_width=True)
-        
-            st.subheader("What-if portfolio")
-            what_if_df = build_what_if(tracker_df, starting_capital)
-            st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
-        
-            st.subheader("Tracker")
-            st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
+
+    if filtered_chart_df.empty:
+        st.info("No portfolio chart data available yet.")
+    else:
+        import altair as alt
+
+        chart_data = (
+            filtered_chart_df
+            .reset_index()
+            .rename(columns={"index": "Time"})
+            .melt(id_vars="Time", var_name="Basket", value_name="Return %")
+            .dropna()
+        )
+
+        line_chart = (
+            alt.Chart(chart_data)
+            .mark_line(strokeWidth=2.5)
+            .encode(
+                x=alt.X("Time:T", title="Time"),
+                y=alt.Y("Return %:Q", title="Return % since Monday"),
+                color=alt.Color("Basket:N", title="Basket"),
+                tooltip=[
+                    alt.Tooltip("Time:T", title="Time"),
+                    alt.Tooltip("Basket:N", title="Basket"),
+                    alt.Tooltip("Return %:Q", title="Return %", format=".2f"),
+                ],
+            )
+        )
+
+        zero_line = (
+            alt.Chart(pd.DataFrame({"Return %": [0]}))
+            .mark_rule(color="gray", strokeDash=[6, 4], strokeWidth=2)
+            .encode(y="Return %:Q")
+        )
+
+        st.altair_chart(line_chart + zero_line, use_container_width=True)
+
+    st.subheader("What-if portfolio")
+    what_if_df = build_what_if(tracker_df, starting_capital)
+    st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
+
+    st.subheader("Tracker")
+    st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
     col1, col2 = st.columns(2)
     with col1:
