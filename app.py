@@ -110,7 +110,7 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
     records = []
     start_date = monday_date
@@ -128,10 +128,10 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
                 symbol,
                 start=start_date.isoformat(),
                 end=end_date.isoformat(),
-                interval="30m",
+                interval="1m",
                 auto_adjust=True,
                 progress=False,
-                prepost=False,
+                prepost=True,
                 threads=False,
             )
 
@@ -203,7 +203,7 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], monday_date: date) -> pd.DataFrame:
     if not model_rows:
         return pd.DataFrame()
@@ -228,10 +228,10 @@ def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], m
                 symbol,
                 start=start_date.isoformat(),
                 end=end_date.isoformat(),
-                interval="30m",
+                interval="1m",
                 auto_adjust=True,
                 progress=False,
-                prepost=False,
+                prepost=True,
                 threads=False,
             )
 
