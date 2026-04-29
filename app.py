@@ -442,8 +442,8 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Current Price",
                 "Stock Move %",
                 "Position Return %",
-                "Starting $",
-                "Current $",
+                "Capital Allocated",
+                "Current Position Value",
                 "Dollar P/L",
                 "Correct So Far",
             ]
@@ -478,8 +478,8 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Current Price": row.get("Current Price"),
                 "Stock Move %": stock_move,
                 "Position Return %": pos_return,
-                "Starting $": dollars_per_stock,
-                "Current $": current_value,
+                "Capital Allocated": dollars_per_stock,
+                "Current Position Value": current_value,
                 "Dollar P/L": pnl,
                 "Correct So Far": row.get("Correct So Far"),
             }
@@ -583,7 +583,16 @@ def style_tracker(df: pd.DataFrame):
 def style_money(df: pd.DataFrame):
     format_map = {}
 
-    for col in ["Starting Capital", "Dollars Per Stock", "Current Value", "Dollar P/L", "Starting $", "Current $", "Monday Price", "Current Price"]:
+    for col in [
+        "Starting Capital",
+        "Dollars Per Stock",
+        "Current Value",
+        "Dollar P/L",
+        "Monday Price",
+        "Current Price",
+        "Capital Allocated",
+        "Current Position Value",
+    ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
 
