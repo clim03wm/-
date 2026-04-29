@@ -547,6 +547,53 @@ def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
     return out[[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
 
 
+def build_conviction_summary(df: pd.DataFrame) -> pd.DataFrame:
+    # WATCH is intentionally excluded from conviction summaries.
+    active = df[df["Action"].isin(["BUY", "SELL"])].copy()
+    valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
+
+    if valid.empty:
+        return pd.DataFrame(
+            columns=["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]
+        )
+
+    valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
+
+    def bucket(value):
+        try:
+            value = int(value)
+        except Exception:
+            return "Unknown"
+
+        if value >= 80:
+            return "80+"
+        if value >= 60:
+            return "60-79"
+        if value >= 45:
+            return "45-59"
+        return "Below 45"
+
+    valid["Conviction Bucket"] = valid["Conviction"].apply(bucket)
+
+    out = (
+        valid.groupby("Conviction Bucket")
+        .agg(
+            Stocks=("Ticker", "count"),
+            Correct=("Correct Flag", "sum"),
+            **{"Avg Change Since Monday %": ("Change Since Monday %", "mean")},
+        )
+        .reset_index()
+    )
+
+    out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
+
+    order = ["80+", "60-79", "45-59", "Below 45", "Unknown"]
+    out["Order"] = out["Conviction Bucket"].apply(lambda x: order.index(x) if x in order else 99)
+    out = out.sort_values("Order").drop(columns=["Order"])
+
+    return out[["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
+
+
 def style_tracker(df: pd.DataFrame):
     def color_action(value):
         value = str(value).upper()
