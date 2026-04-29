@@ -42,6 +42,9 @@ DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL
 25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
 
 
+DEFAULT_STARTING_CAPITAL = 10_000.0
+
+
 def this_weeks_monday(today: date | None = None) -> date:
     today = today or date.today()
     return today - timedelta(days=today.weekday())
@@ -442,7 +445,8 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Current Price",
                 "Stock Move %",
                 "Position Return %",
-                "Capital Allocated",
+                "Capital Allocated Per Stock",
+                "Shares / Shorted Shares",
                 "Current Position Value",
                 "Dollar P/L",
                 "Correct So Far",
@@ -466,6 +470,13 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
         else:
             continue
 
+        monday_price = row.get("Monday Reference Price")
+        current_price = row.get("Current Price")
+
+        shares = None
+        if pd.notna(monday_price) and float(monday_price) != 0:
+            shares = dollars_per_stock / float(monday_price)
+
         current_value = dollars_per_stock * (1 + pos_return / 100)
         pnl = current_value - dollars_per_stock
 
@@ -474,11 +485,12 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Ticker": row["Ticker"],
                 "Position": pos_label if position_type == "Mixed" else position_type,
                 "Direction": direction,
-                "Monday Price": row.get("Monday Reference Price"),
-                "Current Price": row.get("Current Price"),
+                "Monday Price": monday_price,
+                "Current Price": current_price,
                 "Stock Move %": stock_move,
                 "Position Return %": pos_return,
-                "Capital Allocated": dollars_per_stock,
+                "Capital Allocated Per Stock": dollars_per_stock,
+                "Shares / Shorted Shares": shares,
                 "Current Position Value": current_value,
                 "Dollar P/L": pnl,
                 "Correct So Far": row.get("Correct So Far"),
@@ -590,7 +602,7 @@ def style_money(df: pd.DataFrame):
         "Dollar P/L",
         "Monday Price",
         "Current Price",
-        "Capital Allocated",
+        "Capital Allocated Per Stock",
         "Current Position Value",
     ]:
         if col in df.columns:
@@ -599,6 +611,9 @@ def style_money(df: pd.DataFrame):
     for col in ["Percent Return", "Accuracy %", "Avg Change Since Monday %", "Stock Move %", "Position Return %"]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
+
+    if "Shares / Shorted Shares" in df.columns:
+        format_map["Shares / Shorted Shares"] = "{:,.4f}"
 
     def color_num(value):
         try:
@@ -642,13 +657,7 @@ monday_date = this_weeks_monday()
 with tab_dashboard:
     st.caption(f"Reference period: this week's Monday ({monday_date}) to now.")
 
-    starting_capital = st.number_input(
-        "What-if starting capital",
-        min_value=100.0,
-        max_value=10_000_000.0,
-        value=10_000.0,
-        step=100.0,
-    )
+    starting_capital = DEFAULT_STARTING_CAPITAL
 
     if model_df.empty:
         st.warning("No valid rows found. Paste your model output in the second tab.")
@@ -744,16 +753,14 @@ with tab_dashboard:
 
         st.altair_chart(line_chart + zero_line, use_container_width=True)
 
-    st.subheader("What-if portfolio")
+    st.subheader("Position details")
     st.caption(
-        "This answers: if the starting capital was split equally across the model's active calls on Monday, "
-        "what would it be worth now?"
+        "Assumes a $10,000 paper portfolio split equally across the model's active BUY/UP and SELL/DOWN calls. "
+        "SELL/DOWN rows are treated as short positions."
     )
 
-    st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
-
     detail_buy, detail_sell, detail_combined = st.tabs(
-        ["BUY/UP details", "SELL/DOWN short details", "Combined details"]
+        ["BUY/UP positions", "SELL/DOWN short positions", "Combined active positions"]
     )
 
     with detail_buy:
