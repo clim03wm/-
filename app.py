@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
+import json
 import re
 
 import pandas as pd
@@ -13,6 +15,14 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
 )
+
+
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
+
+ARCHIVE_FILE = DATA_DIR / "weekly_archive.csv"
+NOTES_FILE = DATA_DIR / "weekly_notes.json"
+PUT_TRACKER_FILE = DATA_DIR / "put_tracker.csv"
 
 
 DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL      -1.000    1.43      -0.000    2026-04-27T22:58:34+00:00
@@ -42,6 +52,15 @@ DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL
 25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
 
 
+SECTOR_MAP = {
+    "PHM": "Housing", "RCL": "Travel", "NCLH": "Travel", "EXPE": "Travel", "BA": "Industrials",
+    "FCX": "Materials", "XOM": "Energy", "TSLA": "Auto/EV", "VLTO": "Industrials",
+    "BLK": "Financials", "MCO": "Financials", "COF": "Financials", "AXP": "Financials", "RF": "Financials",
+    "SMCI": "Technology", "VST": "Utilities/Energy", "CARR": "Industrials", "MSCI": "Financial Data",
+    "APTV": "Auto Suppliers", "EL": "Consumer", "ALLE": "Industrials", "DOV": "Industrials",
+    "ARE": "Real Estate", "ROK": "Industrials", "NFLX": "Communication Services",
+}
+
 
 def this_weeks_monday(today: date | None = None) -> date:
     today = today or date.today()
@@ -50,6 +69,10 @@ def this_weeks_monday(today: date | None = None) -> date:
 
 def yahoo_symbol(ticker: str) -> str:
     return str(ticker).strip().upper().replace(".", "-")
+
+
+def sector_for_ticker(ticker: str) -> str:
+    return SECTOR_MAP.get(str(ticker).upper(), "Other")
 
 
 def parse_model_output(raw_text: str) -> pd.DataFrame:
@@ -61,7 +84,6 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
             continue
 
         parts = re.split(r"\s+", line)
-
         if len(parts) < 11:
             continue
 
@@ -79,6 +101,7 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
                     "Expected Move %": float(parts[8]),
                     "Setup Score": float(parts[9]),
                     "Run Timestamp": parts[10],
+                    "Sector": sector_for_ticker(parts[1].upper()),
                 }
             )
         except Exception:
@@ -182,13 +205,6 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], monday_date: date) -> pd.DataFrame:
-    """
-    Builds Robinhood-style portfolio lines.
-
-    BUY/UP = long return
-    SELL/DOWN = short return, so returns are inverted
-    WATCH is ignored
-    """
     if not model_rows:
         return pd.DataFrame()
 
@@ -337,26 +353,75 @@ def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.D
         return "NO"
 
     out["Correct So Far"] = out.apply(correct, axis=1)
+    out["Position Return %"] = out.apply(position_return_pct, axis=1)
+    out["Risk Flags"] = out.apply(make_risk_flags, axis=1)
     return out
 
 
-def build_short_calculator_table(tracker_df: pd.DataFrame) -> pd.DataFrame:
-    return tracker_df[
-        (tracker_df["Action"] == "SELL")
-        & (tracker_df["Direction"] == "DOWN")
-        & (tracker_df["Monday Reference Price"].notna())
-        & (tracker_df["Current Price"].notna())
-    ].copy()
+def position_return_pct(row: pd.Series) -> float | None:
+    change = row.get("Change Since Monday %")
+    if pd.isna(change):
+        return None
+
+    action = str(row.get("Action", "")).upper()
+    direction = str(row.get("Direction", "")).upper()
+
+    if action == "BUY" and direction == "UP":
+        return float(change)
+
+    if action == "SELL" and direction == "DOWN":
+        return float(-change)
+
+    return None
+
+
+def make_risk_flags(row: pd.Series) -> str:
+    flags = []
+
+    action = str(row.get("Action", "")).upper()
+    edge = str(row.get("Edge", "")).upper()
+    regime = str(row.get("Regime", "")).upper()
+
+    conviction = row.get("Conviction")
+    expected_move = row.get("Expected Move %")
+    change = row.get("Change Since Monday %")
+    setup = row.get("Setup Score")
+
+    try:
+        if pd.notna(conviction) and int(conviction) >= 80:
+            flags.append("High conviction")
+        elif pd.notna(conviction) and int(conviction) < 50 and action in {"BUY", "SELL"}:
+            flags.append("Lower conviction")
+    except Exception:
+        pass
+
+    try:
+        if pd.notna(expected_move) and abs(float(expected_move)) >= 5:
+            flags.append("Large expected move")
+    except Exception:
+        pass
+
+    try:
+        if pd.notna(change) and abs(float(change)) >= 3:
+            flags.append("Large live move")
+    except Exception:
+        pass
+
+    try:
+        if pd.notna(setup) and float(setup) < -0.10:
+            flags.append("Crowded setup")
+    except Exception:
+        pass
+
+    if regime == "EVENTFUL":
+        flags.append("Eventful")
+    if edge == "WEAK" and action in {"BUY", "SELL"}:
+        flags.append("Weak edge")
+
+    return ", ".join(flags) if flags else "None"
 
 
 def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    One-share what-if summary.
-
-    BUY/UP = buy 1 share at Monday reference price.
-    SELL/DOWN = short 1 share at Monday reference price.
-    WATCH is ignored.
-    """
     strategies = [
         (
             "BUY 1 share of each BUY/UP stock",
@@ -428,12 +493,6 @@ def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame:
-    """
-    One-share detail table.
-
-    BUY/UP = buy 1 share at Monday reference price.
-    SELL/DOWN = short 1 share at Monday reference price.
-    """
     side = side.upper()
 
     if side == "BUY":
@@ -463,16 +522,9 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
     if basket.empty:
         return pd.DataFrame(
             columns=[
-                "Ticker",
-                "Position",
-                "Direction",
-                "Monday Price",
-                "Current Price",
-                "Shares / Shorted Shares",
-                "Stock Move %",
-                "Position Return %",
-                "Dollar P/L",
-                "Correct So Far",
+                "Ticker", "Position", "Direction", "Sector", "Monday Price", "Current Price",
+                "Shares / Shorted Shares", "Stock Move %", "Position Return %",
+                "Dollar P/L", "Correct So Far", "Risk Flags",
             ]
         )
 
@@ -510,6 +562,7 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
                 "Ticker": row["Ticker"],
                 "Position": pos_label if position_type == "Mixed" else position_type,
                 "Direction": direction,
+                "Sector": row.get("Sector", "Other"),
                 "Monday Price": monday_price,
                 "Current Price": current_price,
                 "Shares / Shorted Shares": shares,
@@ -517,44 +570,20 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
                 "Position Return %": pos_return,
                 "Dollar P/L": pnl,
                 "Correct So Far": row.get("Correct So Far"),
+                "Risk Flags": row.get("Risk Flags"),
             }
         )
 
     return pd.DataFrame(rows)
 
 
-def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
-    # WATCH is intentionally excluded from summaries.
-    active = df[df["Action"].isin(["BUY", "SELL"])].copy()
-    valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
-
-    if valid.empty:
-        return pd.DataFrame(columns=[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"])
-
-    valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
-
-    out = (
-        valid.groupby(group_col)
-        .agg(
-            Stocks=("Ticker", "count"),
-            Correct=("Correct Flag", "sum"),
-            **{"Avg Change Since Monday %": ("Change Since Monday %", "mean")},
-        )
-        .reset_index()
-    )
-
-    out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
-    return out[[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
-
-
 def build_conviction_summary(df: pd.DataFrame) -> pd.DataFrame:
-    # WATCH is intentionally excluded from conviction summaries.
     active = df[df["Action"].isin(["BUY", "SELL"])].copy()
     valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
 
     if valid.empty:
         return pd.DataFrame(
-            columns=["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]
+            columns=["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Position Return %"]
         )
 
     valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
@@ -580,7 +609,7 @@ def build_conviction_summary(df: pd.DataFrame) -> pd.DataFrame:
         .agg(
             Stocks=("Ticker", "count"),
             Correct=("Correct Flag", "sum"),
-            **{"Avg Change Since Monday %": ("Change Since Monday %", "mean")},
+            **{"Avg Position Return %": ("Position Return %", "mean")},
         )
         .reset_index()
     )
@@ -591,7 +620,210 @@ def build_conviction_summary(df: pd.DataFrame) -> pd.DataFrame:
     out["Order"] = out["Conviction Bucket"].apply(lambda x: order.index(x) if x in order else 99)
     out = out.sort_values("Order").drop(columns=["Order"])
 
-    return out[["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
+    return out[["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Position Return %"]]
+
+
+def build_sector_summary(df: pd.DataFrame) -> pd.DataFrame:
+    active = df[df["Action"].isin(["BUY", "SELL"])].copy()
+    valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
+
+    if valid.empty:
+        return pd.DataFrame(columns=["Sector", "Stocks", "Correct", "Accuracy %", "Avg Position Return %"])
+
+    valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
+
+    out = (
+        valid.groupby("Sector")
+        .agg(
+            Stocks=("Ticker", "count"),
+            Correct=("Correct Flag", "sum"),
+            **{"Avg Position Return %": ("Position Return %", "mean")},
+        )
+        .reset_index()
+    )
+
+    out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
+    return out[["Sector", "Stocks", "Correct", "Accuracy %", "Avg Position Return %"]].sort_values(
+        ["Stocks", "Accuracy %"], ascending=[False, False]
+    )
+
+
+def build_best_worst(df: pd.DataFrame) -> pd.DataFrame:
+    active = df[
+        df["Action"].isin(["BUY", "SELL"])
+        & df["Position Return %"].notna()
+    ].copy()
+
+    if active.empty:
+        return pd.DataFrame(columns=["Category", "Ticker", "Action", "Direction", "Position Return %", "Dollar P/L"])
+
+    active["Dollar P/L 1 Share"] = active.apply(
+        lambda r: (r["Current Price"] - r["Monday Reference Price"])
+        if r["Action"] == "BUY"
+        else (r["Monday Reference Price"] - r["Current Price"]),
+        axis=1,
+    )
+
+    rows = []
+
+    best = active.sort_values("Position Return %", ascending=False).iloc[0]
+    worst = active.sort_values("Position Return %", ascending=True).iloc[0]
+
+    rows.append({
+        "Category": "Best call",
+        "Ticker": best["Ticker"],
+        "Action": best["Action"],
+        "Direction": best["Direction"],
+        "Position Return %": best["Position Return %"],
+        "Dollar P/L": best["Dollar P/L 1 Share"],
+    })
+
+    rows.append({
+        "Category": "Worst call",
+        "Ticker": worst["Ticker"],
+        "Action": worst["Action"],
+        "Direction": worst["Direction"],
+        "Position Return %": worst["Position Return %"],
+        "Dollar P/L": worst["Dollar P/L 1 Share"],
+    })
+
+    for label, action in [("Best BUY", "BUY"), ("Worst BUY", "BUY"), ("Best SELL", "SELL"), ("Worst SELL", "SELL")]:
+        sub = active[active["Action"] == action]
+        if sub.empty:
+            continue
+
+        row = sub.sort_values("Position Return %", ascending=("Worst" in label)).iloc[0]
+
+        rows.append({
+            "Category": label,
+            "Ticker": row["Ticker"],
+            "Action": row["Action"],
+            "Direction": row["Direction"],
+            "Position Return %": row["Position Return %"],
+            "Dollar P/L": row["Dollar P/L 1 Share"],
+        })
+
+    return pd.DataFrame(rows)
+
+
+def build_spy_comparison(tracker_df: pd.DataFrame, monday_date: date) -> pd.DataFrame:
+    what_if_df = build_what_if(tracker_df)
+    combined = what_if_df[what_if_df["Strategy"].str.contains("Combined active", na=False)]
+
+    model_return = None
+    if not combined.empty:
+        model_return = combined["Percent Return"].iloc[0]
+
+    spy_prices = fetch_prices(("SPY",), monday_date)
+    spy_return = None
+
+    if not spy_prices.empty:
+        row = spy_prices.iloc[0]
+        if pd.notna(row["Monday Reference Price"]) and pd.notna(row["Current Price"]):
+            spy_return = (row["Current Price"] - row["Monday Reference Price"]) / row["Monday Reference Price"] * 100
+
+    out = pd.DataFrame(
+        [
+            {"Benchmark": "Model combined active basket", "Return %": model_return},
+            {"Benchmark": "SPY buy-and-hold", "Return %": spy_return},
+        ]
+    )
+
+    if model_return is not None and spy_return is not None:
+        out.loc[len(out)] = {"Benchmark": "Model minus SPY", "Return %": model_return - spy_return}
+
+    return out
+
+
+def load_notes() -> dict:
+    if NOTES_FILE.exists():
+        try:
+            return json.loads(NOTES_FILE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def save_notes(notes: dict) -> None:
+    NOTES_FILE.write_text(json.dumps(notes, indent=2))
+
+
+def load_archive() -> pd.DataFrame:
+    if ARCHIVE_FILE.exists():
+        try:
+            return pd.read_csv(ARCHIVE_FILE)
+        except Exception:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+
+def save_week_to_archive(tracker_df: pd.DataFrame, week_start: date, note: str) -> None:
+    archive = load_archive()
+    to_save = tracker_df.copy()
+    to_save["Week Start"] = week_start.isoformat()
+    to_save["Saved At"] = datetime.now().isoformat(timespec="seconds")
+    to_save["Weekly Note"] = note
+
+    if not archive.empty:
+        archive = archive[archive["Week Start"] != week_start.isoformat()]
+        combined = pd.concat([archive, to_save], ignore_index=True)
+    else:
+        combined = to_save
+
+    combined.to_csv(ARCHIVE_FILE, index=False)
+
+
+def build_win_rate_over_time(archive: pd.DataFrame) -> pd.DataFrame:
+    if archive.empty or "Week Start" not in archive.columns:
+        return pd.DataFrame()
+
+    active = archive[
+        archive["Action"].isin(["BUY", "SELL"])
+        & archive["Correct So Far"].isin(["YES", "NO"])
+    ].copy()
+
+    if active.empty:
+        return pd.DataFrame()
+
+    active["Correct Flag"] = (active["Correct So Far"] == "YES").astype(int)
+
+    out = (
+        active.groupby("Week Start")
+        .agg(
+            Stocks=("Ticker", "count"),
+            Correct=("Correct Flag", "sum"),
+            **{"Avg Position Return %": ("Position Return %", "mean")},
+        )
+        .reset_index()
+    )
+
+    out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
+    return out.sort_values("Week Start")
+
+
+def load_put_tracker() -> pd.DataFrame:
+    if PUT_TRACKER_FILE.exists():
+        try:
+            return pd.read_csv(PUT_TRACKER_FILE)
+        except Exception:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+
+def save_put_trade(row: dict) -> None:
+    existing = load_put_tracker()
+    new = pd.DataFrame([row])
+    combined = pd.concat([existing, new], ignore_index=True) if not existing.empty else new
+    combined.to_csv(PUT_TRACKER_FILE, index=False)
+
+
+def build_short_calculator_table(tracker_df: pd.DataFrame) -> pd.DataFrame:
+    return tracker_df[
+        (tracker_df["Action"] == "SELL")
+        & (tracker_df["Direction"] == "DOWN")
+        & (tracker_df["Monday Reference Price"].notna())
+        & (tracker_df["Current Price"].notna())
+    ].copy()
 
 
 def style_tracker(df: pd.DataFrame):
@@ -653,6 +885,7 @@ def style_tracker(df: pd.DataFrame):
                 "Monday Reference Price": "{:.2f}",
                 "Current Price": "{:.2f}",
                 "Change Since Monday %": "{:.2f}%",
+                "Position Return %": "{:.2f}%",
                 "Model Score": "{:.3f}",
                 "Expected Move %": "{:.2f}",
                 "Setup Score": "{:.3f}",
@@ -666,18 +899,18 @@ def style_money(df: pd.DataFrame):
     format_map = {}
 
     for col in [
-        "Starting Capital",
-        "Current Value",
-        "Dollar P/L",
-        "Monday Price",
-        "Current Price",
-        "Monday Entry Value",
-        "Current Position Value",
+        "Starting Capital", "Current Value", "Dollar P/L", "Monday Price",
+        "Current Price", "Monday Entry Value", "Current Position Value",
+        "Total Cost", "Current Option Value", "Target Option Value",
     ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
 
-    for col in ["Percent Return", "Accuracy %", "Avg Change Since Monday %", "Stock Move %", "Position Return %"]:
+    for col in [
+        "Percent Return", "Accuracy %", "Avg Change Since Monday %",
+        "Stock Move %", "Position Return %", "Avg Position Return %",
+        "Return %",
+    ]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
 
@@ -697,7 +930,10 @@ def style_money(df: pd.DataFrame):
 
     styled = df.style.format(format_map, na_rep="")
 
-    for col in ["Dollar P/L", "Percent Return", "Accuracy %", "Avg Change Since Monday %", "Stock Move %", "Position Return %"]:
+    for col in [
+        "Dollar P/L", "Percent Return", "Accuracy %", "Avg Change Since Monday %",
+        "Stock Move %", "Position Return %", "Avg Position Return %", "Return %",
+    ]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
 
@@ -710,7 +946,9 @@ st.caption("Tracks this week's model output against this week's Monday reference
 if "raw_model_output" not in st.session_state:
     st.session_state["raw_model_output"] = DEFAULT_TEXT
 
-tab_dashboard, tab_input = st.tabs(["Dashboard", "Paste model output"])
+tab_dashboard, tab_input, tab_archive, tab_notes, tab_puts = st.tabs(
+    ["Dashboard", "Paste model output", "Archive", "Weekly notes", "Put tracker"]
+)
 
 with tab_input:
     st.session_state["raw_model_output"] = st.text_area(
@@ -723,46 +961,45 @@ with tab_input:
 model_df = parse_model_output(st.session_state["raw_model_output"])
 monday_date = this_weeks_monday()
 
+if model_df.empty:
+    with tab_dashboard:
+        st.warning("No valid rows found. Paste your model output in the second tab.")
+    st.stop()
+
+tickers = tuple(model_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
+model_rows = tuple(
+    model_df[["Ticker", "Action", "Direction"]]
+    .dropna()
+    .astype(str)
+    .itertuples(index=False, name=None)
+)
+
+with st.spinner("Fetching prices and calculating performance..."):
+    price_df = fetch_prices(tickers, monday_date)
+    tracker_df = add_tracking_columns(model_df, price_df)
+    portfolio_chart_df = fetch_position_return_series(model_rows, monday_date)
+
+what_if_df = build_what_if(tracker_df)
+combined_row = what_if_df[what_if_df["Strategy"].str.contains("Combined active", na=False)]
+
+if not combined_row.empty and pd.notna(combined_row["Dollar P/L"].iloc[0]):
+    combined_pnl = float(combined_row["Dollar P/L"].iloc[0])
+    combined_return = float(combined_row["Percent Return"].iloc[0])
+else:
+    combined_pnl = 0.0
+    combined_return = 0.0
+
+active_valid = tracker_df[
+    (tracker_df["Action"].isin(["BUY", "SELL"]))
+    & (tracker_df["Correct So Far"].isin(["YES", "NO"]))
+].copy()
+
+active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
+active_total = int(len(active_valid))
+active_accuracy = active_correct / active_total * 100 if active_total else 0
+
 with tab_dashboard:
     st.caption(f"Reference period: this week's Monday ({monday_date}) to now.")
-
-    # Position tables use a simple one-share-per-stock model.
-
-    if model_df.empty:
-        st.warning("No valid rows found. Paste your model output in the second tab.")
-        st.stop()
-
-    tickers = tuple(model_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
-    model_rows = tuple(
-        model_df[["Ticker", "Action", "Direction"]]
-        .dropna()
-        .astype(str)
-        .itertuples(index=False, name=None)
-    )
-
-    with st.spinner("Fetching prices and calculating performance..."):
-        price_df = fetch_prices(tickers, monday_date)
-        tracker_df = add_tracking_columns(model_df, price_df)
-        portfolio_chart_df = fetch_position_return_series(model_rows, monday_date)
-
-    active_valid = tracker_df[
-        (tracker_df["Action"].isin(["BUY", "SELL"]))
-        & (tracker_df["Correct So Far"].isin(["YES", "NO"]))
-    ].copy()
-
-    active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
-    active_total = int(len(active_valid))
-    active_accuracy = active_correct / active_total * 100 if active_total else 0
-
-    what_if_df = build_what_if(tracker_df)
-    combined_row = what_if_df[what_if_df["Strategy"] == "Combined active calls: BUY/UP + SELL/DOWN"]
-
-    if not combined_row.empty and pd.notna(combined_row["Dollar P/L"].iloc[0]):
-        combined_pnl = float(combined_row["Dollar P/L"].iloc[0])
-        combined_return = float(combined_row["Percent Return"].iloc[0])
-    else:
-        combined_pnl = 0.0
-        combined_return = 0.0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active calls", active_total)
@@ -790,15 +1027,15 @@ with tab_dashboard:
         import altair as alt
 
         chart_data = filtered_chart_df.reset_index()
-        
         first_col = chart_data.columns[0]
         chart_data = chart_data.rename(columns={first_col: "Time"})
-        
+
         chart_data = (
             chart_data
             .melt(id_vars="Time", var_name="Basket", value_name="Return %")
             .dropna()
         )
+
         line_chart = (
             alt.Chart(chart_data)
             .mark_line(strokeWidth=2.5)
@@ -821,6 +1058,9 @@ with tab_dashboard:
         )
 
         st.altair_chart(line_chart + zero_line, use_container_width=True)
+
+    st.subheader("Best and worst calls")
+    st.dataframe(style_money(build_best_worst(tracker_df)), use_container_width=True, hide_index=True)
 
     st.subheader("Position details")
     st.caption(
@@ -916,11 +1156,6 @@ with tab_dashboard:
             calc_cols[2].metric("P/L at target cover", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
             calc_cols[3].metric("Target cover price", f"${target_cover_price:,.2f}")
 
-            st.caption(
-                "Paper short logic: short at the Monday price, then buy back later. "
-                "If the stock falls, the short gains. If the stock rises, the short loses."
-            )
-
         with calc_tab_put:
             selected_put_ticker = st.selectbox(
                 "Select stock for put option",
@@ -989,17 +1224,42 @@ with tab_dashboard:
             put_metrics[3].metric("P/L now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
             put_metrics[4].metric("P/L at target", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
 
-            st.caption(
-                "Put option logic: one contract usually controls 100 shares. "
-                "If the put premium rises after the stock falls, the option position gains. "
-                "Max loss for a bought put is the premium paid, but options can expire worthless."
-            )
+            save_col, _ = st.columns([1, 3])
+            with save_col:
+                if st.button("Save put trade", key="save_put_trade"):
+                    save_put_trade(
+                        {
+                            "Saved At": datetime.now().isoformat(timespec="seconds"),
+                            "Week Start": monday_date.isoformat(),
+                            "Ticker": selected_put_ticker,
+                            "Contracts": contracts,
+                            "Premium Paid": premium_paid,
+                            "Current Premium": current_premium,
+                            "Target Premium": target_premium,
+                            "Total Cost": total_cost,
+                            "Current Option Value": current_value,
+                            "Target Option Value": target_value,
+                            "P/L Now": current_pnl,
+                            "P/L At Target": target_pnl,
+                        }
+                    )
+                    st.success("Put trade saved.")
 
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
-    st.subheader("Accuracy by conviction")
-    st.dataframe(style_money(build_conviction_summary(tracker_df)), use_container_width=True, hide_index=True)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Accuracy by conviction")
+        st.dataframe(style_money(build_conviction_summary(tracker_df)), use_container_width=True, hide_index=True)
+
+    with col2:
+        st.subheader("Sector grouping")
+        st.dataframe(style_money(build_sector_summary(tracker_df)), use_container_width=True, hide_index=True)
+
+    st.subheader("Model vs SPY")
+    st.dataframe(style_money(build_spy_comparison(tracker_df, monday_date)), use_container_width=True, hide_index=True)
 
     st.subheader("Download results")
     st.download_button(
@@ -1008,3 +1268,77 @@ with tab_dashboard:
         file_name=f"manual_weekly_tracker_{monday_date}.csv",
         mime="text/csv",
     )
+
+with tab_archive:
+    st.subheader("Weekly result archive")
+
+    notes = load_notes()
+    current_note = notes.get(monday_date.isoformat(), "")
+
+    if st.button("Save this week to archive"):
+        save_week_to_archive(tracker_df, monday_date, current_note)
+        st.success("Saved this week to archive.")
+
+    archive_df = load_archive()
+
+    if archive_df.empty:
+        st.info("No archived weeks yet.")
+    else:
+        win_df = build_win_rate_over_time(archive_df)
+
+        if not win_df.empty:
+            st.subheader("Win rate over time")
+            st.line_chart(win_df.set_index("Week Start")[["Accuracy %", "Avg Position Return %"]])
+
+        st.subheader("Archived rows")
+        st.dataframe(archive_df, use_container_width=True, hide_index=True)
+
+        st.download_button(
+            "Download archive CSV",
+            data=archive_df.to_csv(index=False).encode("utf-8"),
+            file_name="weekly_archive.csv",
+            mime="text/csv",
+        )
+
+with tab_notes:
+    st.subheader("Weekly notes")
+
+    notes = load_notes()
+    week_key = monday_date.isoformat()
+
+    note_text = st.text_area(
+        f"Note for week starting {week_key}",
+        value=notes.get(week_key, ""),
+        height=220,
+    )
+
+    if st.button("Save note"):
+        notes[week_key] = note_text
+        save_notes(notes)
+        st.success("Note saved.")
+
+    st.subheader("Saved notes")
+    if notes:
+        notes_df = pd.DataFrame(
+            [{"Week Start": k, "Note": v} for k, v in sorted(notes.items(), reverse=True)]
+        )
+        st.dataframe(notes_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No saved notes yet.")
+
+with tab_puts:
+    st.subheader("Saved put option tracker")
+
+    put_df = load_put_tracker()
+
+    if put_df.empty:
+        st.info("No saved put trades yet. Save one from the Put option calculator on the Dashboard.")
+    else:
+        st.dataframe(style_money(put_df), use_container_width=True, hide_index=True)
+
+        st.download_button(
+            "Download put tracker CSV",
+            data=put_df.to_csv(index=False).encode("utf-8"),
+            file_name="put_tracker.csv",
+            mime="text/csv",
+        )
