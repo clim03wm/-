@@ -766,7 +766,7 @@ with tab_dashboard:
 
         st.altair_chart(line_chart + zero_line, use_container_width=True)
 
-    st.subheader("Position details")
+    st.subheader("What If Positions")
     st.caption(
         "Assumes 1 share bought for each BUY/UP call and 1 share shorted for each SELL/DOWN call at Monday's reference price."
     )
