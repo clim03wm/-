@@ -805,72 +805,148 @@ with tab_dashboard:
             hide_index=True,
         )
 
-    st.subheader("Short calculator")
+    st.subheader("Robinhood bearish trade calculators")
     st.caption(
-        "Paper calculator for shorting one of the model's SELL/DOWN calls. "
-        "It estimates profit/loss if the stock was shorted at the Monday reference price and covered now or at a target price."
+        "For SELL/DOWN calls. The paper short calculator shows classic short math. "
+        "The put calculator is the cleaner Robinhood-style bearish setup if your account is approved for options."
     )
 
     short_df = build_short_calculator_table(tracker_df)
 
     if short_df.empty:
-        st.info("No valid SELL/DOWN stocks available for the short calculator yet.")
+        st.info("No valid SELL/DOWN stocks available yet.")
     else:
-        selected_short_ticker = st.selectbox(
-            "Select stock to short",
-            short_df["Ticker"].tolist(),
-            key="short_calc_ticker",
-        )
+        calc_tab_short, calc_tab_put = st.tabs(["Paper short calculator", "Put option calculator"])
 
-        selected_row = short_df[short_df["Ticker"] == selected_short_ticker].iloc[0]
-
-        monday_price = float(selected_row["Monday Reference Price"])
-        current_price = float(selected_row["Current Price"])
-
-        col_a, col_b, col_c = st.columns(3)
-
-        with col_a:
-            short_amount = st.number_input(
-                "Dollar amount to short",
-                min_value=0.0,
-                value=1000.0,
-                step=100.0,
-                key="short_calc_amount",
+        with calc_tab_short:
+            selected_short_ticker = st.selectbox(
+                "Select stock to short",
+                short_df["Ticker"].tolist(),
+                key="short_calc_ticker",
             )
 
-        with col_b:
-            target_cover_price = st.number_input(
-                "Target cover price",
-                min_value=0.01,
-                value=current_price,
-                step=1.0,
-                key="short_calc_target_price",
+            selected_row = short_df[short_df["Ticker"] == selected_short_ticker].iloc[0]
+
+            monday_price = float(selected_row["Monday Reference Price"])
+            current_price = float(selected_row["Current Price"])
+
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                short_amount = st.number_input(
+                    "Dollar amount to short",
+                    min_value=0.0,
+                    value=1000.0,
+                    step=100.0,
+                    key="short_calc_amount",
+                )
+
+            with col_b:
+                target_cover_price = st.number_input(
+                    "Target cover price",
+                    min_value=0.01,
+                    value=current_price,
+                    step=1.0,
+                    key="short_calc_target_price",
+                )
+
+            with col_c:
+                st.metric("Monday short price", f"${monday_price:,.2f}")
+                st.metric("Current price", f"${current_price:,.2f}")
+
+            shares_shorted = short_amount / monday_price if monday_price else 0.0
+
+            current_pnl = shares_shorted * (monday_price - current_price)
+            target_pnl = shares_shorted * (monday_price - target_cover_price)
+
+            current_return_pct = (current_pnl / short_amount * 100) if short_amount else 0.0
+            target_return_pct = (target_pnl / short_amount * 100) if short_amount else 0.0
+
+            calc_cols = st.columns(4)
+
+            calc_cols[0].metric("Shares shorted", f"{shares_shorted:,.4f}")
+            calc_cols[1].metric("P/L if covered now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
+            calc_cols[2].metric("P/L at target cover", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
+            calc_cols[3].metric("Target cover price", f"${target_cover_price:,.2f}")
+
+            st.caption(
+                "Paper short logic: short at the Monday price, then buy back later. "
+                "If the stock falls, the short gains. If the stock rises, the short loses."
             )
 
-        with col_c:
-            st.metric("Monday short price", f"${monday_price:,.2f}")
-            st.metric("Current price", f"${current_price:,.2f}")
+        with calc_tab_put:
+            selected_put_ticker = st.selectbox(
+                "Select stock for put option",
+                short_df["Ticker"].tolist(),
+                key="put_calc_ticker",
+            )
 
-        shares_shorted = short_amount / monday_price if monday_price else 0.0
+            selected_put_row = short_df[short_df["Ticker"] == selected_put_ticker].iloc[0]
 
-        current_pnl = shares_shorted * (monday_price - current_price)
-        target_pnl = shares_shorted * (monday_price - target_cover_price)
+            monday_price = float(selected_put_row["Monday Reference Price"])
+            current_price = float(selected_put_row["Current Price"])
 
-        current_return_pct = (current_pnl / short_amount * 100) if short_amount else 0.0
-        target_return_pct = (target_pnl / short_amount * 100) if short_amount else 0.0
+            put_col_a, put_col_b, put_col_c, put_col_d = st.columns(4)
 
-        calc_cols = st.columns(4)
+            with put_col_a:
+                contracts = st.number_input(
+                    "Contracts",
+                    min_value=1,
+                    value=1,
+                    step=1,
+                    key="put_contracts",
+                )
 
-        calc_cols[0].metric("Shares shorted", f"{shares_shorted:,.4f}")
-        calc_cols[1].metric("P/L if covered now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
-        calc_cols[2].metric("P/L at target cover", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
-        calc_cols[3].metric("Target cover price", f"${target_cover_price:,.2f}")
+            with put_col_b:
+                premium_paid = st.number_input(
+                    "Premium paid per share",
+                    min_value=0.01,
+                    value=1.00,
+                    step=0.05,
+                    key="put_premium_paid",
+                )
 
-        st.caption(
-            "Short logic: if the stock falls, the short gains. If the stock rises, the short loses. "
-            "Example: short at $100 and cover at $90 = +$10 per share. "
-            "Short at $100 and cover at $110 = -$10 per share."
-        )
+            with put_col_c:
+                current_premium = st.number_input(
+                    "Current premium per share",
+                    min_value=0.00,
+                    value=1.00,
+                    step=0.05,
+                    key="put_current_premium",
+                )
+
+            with put_col_d:
+                target_premium = st.number_input(
+                    "Target premium per share",
+                    min_value=0.00,
+                    value=1.50,
+                    step=0.05,
+                    key="put_target_premium",
+                )
+
+            total_cost = contracts * premium_paid * 100
+            current_value = contracts * current_premium * 100
+            target_value = contracts * target_premium * 100
+
+            current_pnl = current_value - total_cost
+            target_pnl = target_value - total_cost
+
+            current_return_pct = (current_pnl / total_cost * 100) if total_cost else 0.0
+            target_return_pct = (target_pnl / total_cost * 100) if total_cost else 0.0
+
+            put_metrics = st.columns(5)
+
+            put_metrics[0].metric("Stock Monday price", f"${monday_price:,.2f}")
+            put_metrics[1].metric("Stock current price", f"${current_price:,.2f}")
+            put_metrics[2].metric("Total option cost", f"${total_cost:,.2f}")
+            put_metrics[3].metric("P/L now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
+            put_metrics[4].metric("P/L at target", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
+
+            st.caption(
+                "Put option logic: one contract usually controls 100 shares. "
+                "If the put premium rises after the stock falls, the option position gains. "
+                "Max loss for a bought put is the premium paid, but options can expire worthless."
+            )
 
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
