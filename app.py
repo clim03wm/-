@@ -42,8 +42,6 @@ DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL
 25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
 
 
-DEFAULT_STARTING_CAPITAL = 10_000.0
-
 
 def this_weeks_monday(today: date | None = None) -> date:
     today = today or date.today()
@@ -342,18 +340,25 @@ def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.D
     return out
 
 
-def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataFrame:
+def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    One-share what-if summary.
+
+    BUY/UP = buy 1 share at Monday reference price.
+    SELL/DOWN = short 1 share at Monday reference price.
+    WATCH is ignored.
+    """
     strategies = [
         (
-            "BUY all BUY/UP stocks",
+            "BUY 1 share of each BUY/UP stock",
             (tracker_df["Action"] == "BUY") & (tracker_df["Direction"] == "UP"),
         ),
         (
-            "SHORT all SELL/DOWN stocks",
+            "SHORT 1 share of each SELL/DOWN stock",
             (tracker_df["Action"] == "SELL") & (tracker_df["Direction"] == "DOWN"),
         ),
         (
-            "Combined active calls: BUY/UP + SELL/DOWN",
+            "Combined active calls: 1 share each BUY/UP + SELL/DOWN",
             (
                 ((tracker_df["Action"] == "BUY") & (tracker_df["Direction"] == "UP"))
                 | ((tracker_df["Action"] == "SELL") & (tracker_df["Direction"] == "DOWN"))
@@ -365,42 +370,47 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataF
 
     for name, mask in strategies:
         basket = tracker_df[mask].copy()
-        returns = []
+        total_entry_value = 0.0
+        total_current_value = 0.0
+        total_pnl = 0.0
+        valid_positions = 0
 
         for _, row in basket.iterrows():
-            change = row.get("Change Since Monday %")
-            if pd.isna(change):
+            monday_price = row.get("Monday Reference Price")
+            current_price = row.get("Current Price")
+
+            if pd.isna(monday_price) or pd.isna(current_price):
                 continue
+
+            monday_price = float(monday_price)
+            current_price = float(current_price)
 
             action = str(row.get("Action", "")).upper()
             direction = str(row.get("Direction", "")).upper()
 
             if action == "BUY" and direction == "UP":
-                returns.append(float(change))
+                pnl = current_price - monday_price
+                current_position_value = current_price
             elif action == "SELL" and direction == "DOWN":
-                returns.append(float(-change))
+                pnl = monday_price - current_price
+                current_position_value = monday_price + pnl
+            else:
+                continue
 
-        if returns:
-            percent_return = sum(returns) / len(returns)
-            current_value = starting_capital * (1 + percent_return / 100)
-            pnl = current_value - starting_capital
-            stocks = len(returns)
-            dollars_per_stock = starting_capital / stocks
-        else:
-            percent_return = None
-            current_value = None
-            pnl = None
-            stocks = 0
-            dollars_per_stock = None
+            total_entry_value += monday_price
+            total_current_value += current_position_value
+            total_pnl += pnl
+            valid_positions += 1
+
+        percent_return = (total_pnl / total_entry_value * 100) if total_entry_value else None
 
         rows.append(
             {
                 "Strategy": name,
-                "Stocks": stocks,
-                "Starting Capital": starting_capital,
-                "Dollars Per Stock": dollars_per_stock,
-                "Current Value": current_value,
-                "Dollar P/L": pnl,
+                "Stocks": valid_positions,
+                "Monday Entry Value": total_entry_value if valid_positions else None,
+                "Current Position Value": total_current_value if valid_positions else None,
+                "Dollar P/L": total_pnl if valid_positions else None,
                 "Percent Return": percent_return,
             }
         )
@@ -408,7 +418,13 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataF
     return pd.DataFrame(rows)
 
 
-def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, side: str) -> pd.DataFrame:
+def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame:
+    """
+    One-share detail table.
+
+    BUY/UP = buy 1 share at Monday reference price.
+    SELL/DOWN = short 1 share at Monday reference price.
+    """
     side = side.upper()
 
     if side == "BUY":
@@ -443,17 +459,14 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Direction",
                 "Monday Price",
                 "Current Price",
+                "Shares / Shorted Shares",
                 "Stock Move %",
                 "Position Return %",
-                "Capital Allocated Per Stock",
-                "Shares / Shorted Shares",
-                "Current Position Value",
                 "Dollar P/L",
                 "Correct So Far",
             ]
         )
 
-    dollars_per_stock = starting_capital / len(basket)
     rows = []
 
     for _, row in basket.iterrows():
@@ -461,24 +474,27 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
         direction = str(row.get("Direction", "")).upper()
         stock_move = float(row["Change Since Monday %"])
 
-        if action == "BUY" and direction == "UP":
-            pos_return = stock_move
-            pos_label = "Long"
-        elif action == "SELL" and direction == "DOWN":
-            pos_return = -stock_move
-            pos_label = "Short"
-        else:
-            continue
-
         monday_price = row.get("Monday Reference Price")
         current_price = row.get("Current Price")
 
-        shares = None
-        if pd.notna(monday_price) and float(monday_price) != 0:
-            shares = dollars_per_stock / float(monday_price)
+        if pd.isna(monday_price) or pd.isna(current_price):
+            continue
 
-        current_value = dollars_per_stock * (1 + pos_return / 100)
-        pnl = current_value - dollars_per_stock
+        monday_price = float(monday_price)
+        current_price = float(current_price)
+
+        shares = 1.0
+
+        if action == "BUY" and direction == "UP":
+            pos_return = stock_move
+            pos_label = "Long"
+            pnl = current_price - monday_price
+        elif action == "SELL" and direction == "DOWN":
+            pos_return = -stock_move
+            pos_label = "Short"
+            pnl = monday_price - current_price
+        else:
+            continue
 
         rows.append(
             {
@@ -487,11 +503,9 @@ def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, s
                 "Direction": direction,
                 "Monday Price": monday_price,
                 "Current Price": current_price,
+                "Shares / Shorted Shares": shares,
                 "Stock Move %": stock_move,
                 "Position Return %": pos_return,
-                "Capital Allocated Per Stock": dollars_per_stock,
-                "Shares / Shorted Shares": shares,
-                "Current Position Value": current_value,
                 "Dollar P/L": pnl,
                 "Correct So Far": row.get("Correct So Far"),
             }
@@ -597,12 +611,11 @@ def style_money(df: pd.DataFrame):
 
     for col in [
         "Starting Capital",
-        "Dollars Per Stock",
         "Current Value",
         "Dollar P/L",
         "Monday Price",
         "Current Price",
-        "Capital Allocated Per Stock",
+        "Monday Entry Value",
         "Current Position Value",
     ]:
         if col in df.columns:
@@ -657,7 +670,7 @@ monday_date = this_weeks_monday()
 with tab_dashboard:
     st.caption(f"Reference period: this week's Monday ({monday_date}) to now.")
 
-    starting_capital = DEFAULT_STARTING_CAPITAL
+    # Position tables use a simple one-share-per-stock model.
 
     if model_df.empty:
         st.warning("No valid rows found. Paste your model output in the second tab.")
@@ -685,7 +698,7 @@ with tab_dashboard:
     active_total = int(len(active_valid))
     active_accuracy = active_correct / active_total * 100 if active_total else 0
 
-    what_if_df = build_what_if(tracker_df, starting_capital)
+    what_if_df = build_what_if(tracker_df)
     combined_row = what_if_df[what_if_df["Strategy"] == "Combined active calls: BUY/UP + SELL/DOWN"]
 
     if not combined_row.empty and pd.notna(combined_row["Dollar P/L"].iloc[0]):
@@ -699,7 +712,7 @@ with tab_dashboard:
     c1.metric("Active calls", active_total)
     c2.metric("Active correct", active_correct)
     c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
-    c4.metric("What-if P/L", f"${combined_pnl:,.2f}", f"{combined_return:.2f}%")
+    c4.metric("1-share P/L", f"${combined_pnl:,.2f}", f"{combined_return:.2f}%")
 
     st.subheader("Portfolio performance")
     chart_range = st.radio(
@@ -755,8 +768,7 @@ with tab_dashboard:
 
     st.subheader("Position details")
     st.caption(
-        "Assumes a $10,000 paper portfolio split equally across the model's active BUY/UP and SELL/DOWN calls. "
-        "SELL/DOWN rows are treated as short positions."
+        "Assumes 1 share bought for each BUY/UP call and 1 share shorted for each SELL/DOWN call at Monday's reference price."
     )
 
     detail_buy, detail_sell, detail_combined = st.tabs(
@@ -765,21 +777,21 @@ with tab_dashboard:
 
     with detail_buy:
         st.dataframe(
-            style_money(build_what_if_positions(tracker_df, starting_capital, "BUY")),
+            style_money(build_what_if_positions(tracker_df, "BUY")),
             use_container_width=True,
             hide_index=True,
         )
 
     with detail_sell:
         st.dataframe(
-            style_money(build_what_if_positions(tracker_df, starting_capital, "SELL")),
+            style_money(build_what_if_positions(tracker_df, "SELL")),
             use_container_width=True,
             hide_index=True,
         )
 
     with detail_combined:
         st.dataframe(
-            style_money(build_what_if_positions(tracker_df, starting_capital, "COMBINED")),
+            style_money(build_what_if_positions(tracker_df, "COMBINED")),
             use_container_width=True,
             hide_index=True,
         )
