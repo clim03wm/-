@@ -382,20 +382,106 @@ def build_what_if(tracker_df: pd.DataFrame, starting_capital: float) -> pd.DataF
             current_value = starting_capital * (1 + percent_return / 100)
             pnl = current_value - starting_capital
             stocks = len(returns)
+            dollars_per_stock = starting_capital / stocks
         else:
             percent_return = None
             current_value = None
             pnl = None
             stocks = 0
+            dollars_per_stock = None
 
         rows.append(
             {
                 "Strategy": name,
                 "Stocks": stocks,
                 "Starting Capital": starting_capital,
+                "Dollars Per Stock": dollars_per_stock,
                 "Current Value": current_value,
                 "Dollar P/L": pnl,
                 "Percent Return": percent_return,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def build_what_if_positions(tracker_df: pd.DataFrame, starting_capital: float, side: str) -> pd.DataFrame:
+    side = side.upper()
+
+    if side == "BUY":
+        basket = tracker_df[
+            (tracker_df["Action"] == "BUY")
+            & (tracker_df["Direction"] == "UP")
+            & (tracker_df["Change Since Monday %"].notna())
+        ].copy()
+        position_type = "Long"
+    elif side == "SELL":
+        basket = tracker_df[
+            (tracker_df["Action"] == "SELL")
+            & (tracker_df["Direction"] == "DOWN")
+            & (tracker_df["Change Since Monday %"].notna())
+        ].copy()
+        position_type = "Short"
+    else:
+        basket = tracker_df[
+            (
+                ((tracker_df["Action"] == "BUY") & (tracker_df["Direction"] == "UP"))
+                | ((tracker_df["Action"] == "SELL") & (tracker_df["Direction"] == "DOWN"))
+            )
+            & (tracker_df["Change Since Monday %"].notna())
+        ].copy()
+        position_type = "Mixed"
+
+    if basket.empty:
+        return pd.DataFrame(
+            columns=[
+                "Ticker",
+                "Position",
+                "Direction",
+                "Monday Price",
+                "Current Price",
+                "Stock Move %",
+                "Position Return %",
+                "Starting $",
+                "Current $",
+                "Dollar P/L",
+                "Correct So Far",
+            ]
+        )
+
+    dollars_per_stock = starting_capital / len(basket)
+    rows = []
+
+    for _, row in basket.iterrows():
+        action = str(row.get("Action", "")).upper()
+        direction = str(row.get("Direction", "")).upper()
+        stock_move = float(row["Change Since Monday %"])
+
+        if action == "BUY" and direction == "UP":
+            pos_return = stock_move
+            pos_label = "Long"
+        elif action == "SELL" and direction == "DOWN":
+            pos_return = -stock_move
+            pos_label = "Short"
+        else:
+            continue
+
+        current_value = dollars_per_stock * (1 + pos_return / 100)
+        pnl = current_value - dollars_per_stock
+
+        rows.append(
+            {
+                "Ticker": row["Ticker"],
+                "Position": pos_label if position_type == "Mixed" else position_type,
+                "Direction": direction,
+                "Monday Price": row.get("Monday Reference Price"),
+                "Current Price": row.get("Current Price"),
+                "Stock Move %": stock_move,
+                "Position Return %": pos_return,
+                "Starting $": dollars_per_stock,
+                "Current $": current_value,
+                "Dollar P/L": pnl,
+                "Correct So Far": row.get("Correct So Far"),
             }
         )
 
@@ -424,53 +510,6 @@ def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
 
     out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
     return out[[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
-
-
-def build_conviction_summary(df: pd.DataFrame) -> pd.DataFrame:
-    # WATCH is intentionally excluded from conviction summaries.
-    active = df[df["Action"].isin(["BUY", "SELL"])].copy()
-    valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
-
-    if valid.empty:
-        return pd.DataFrame(
-            columns=["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]
-        )
-
-    valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
-
-    def bucket(value):
-        try:
-            value = int(value)
-        except Exception:
-            return "Unknown"
-
-        if value >= 80:
-            return "80+"
-        if value >= 60:
-            return "60-79"
-        if value >= 45:
-            return "45-59"
-        return "Below 45"
-
-    valid["Conviction Bucket"] = valid["Conviction"].apply(bucket)
-
-    out = (
-        valid.groupby("Conviction Bucket")
-        .agg(
-            Stocks=("Ticker", "count"),
-            Correct=("Correct Flag", "sum"),
-            **{"Avg Change Since Monday %": ("Change Since Monday %", "mean")},
-        )
-        .reset_index()
-    )
-
-    out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
-
-    order = ["80+", "60-79", "45-59", "Below 45", "Unknown"]
-    out["Order"] = out["Conviction Bucket"].apply(lambda x: order.index(x) if x in order else 99)
-    out = out.sort_values("Order").drop(columns=["Order"])
-
-    return out[["Conviction Bucket", "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
 
 
 def style_tracker(df: pd.DataFrame):
@@ -544,11 +583,11 @@ def style_tracker(df: pd.DataFrame):
 def style_money(df: pd.DataFrame):
     format_map = {}
 
-    for col in ["Starting Capital", "Current Value", "Dollar P/L"]:
+    for col in ["Starting Capital", "Dollars Per Stock", "Current Value", "Dollar P/L", "Starting $", "Current $", "Monday Price", "Current Price"]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
 
-    for col in ["Percent Return", "Accuracy %", "Avg Change Since Monday %"]:
+    for col in ["Percent Return", "Accuracy %", "Avg Change Since Monday %", "Stock Move %", "Position Return %"]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
 
@@ -565,7 +604,7 @@ def style_money(df: pd.DataFrame):
 
     styled = df.style.format(format_map, na_rep="")
 
-    for col in ["Dollar P/L", "Percent Return", "Accuracy %", "Avg Change Since Monday %"]:
+    for col in ["Dollar P/L", "Percent Return", "Accuracy %", "Avg Change Since Monday %", "Stock Move %", "Position Return %"]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
 
@@ -627,13 +666,22 @@ with tab_dashboard:
     active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
     active_total = int(len(active_valid))
     active_accuracy = active_correct / active_total * 100 if active_total else 0
-    active_avg_change = float(active_valid["Change Since Monday %"].mean()) if active_total else 0
+
+    what_if_df = build_what_if(tracker_df, starting_capital)
+    combined_row = what_if_df[what_if_df["Strategy"] == "Combined active calls: BUY/UP + SELL/DOWN"]
+
+    if not combined_row.empty and pd.notna(combined_row["Dollar P/L"].iloc[0]):
+        combined_pnl = float(combined_row["Dollar P/L"].iloc[0])
+        combined_return = float(combined_row["Percent Return"].iloc[0])
+    else:
+        combined_pnl = 0.0
+        combined_return = 0.0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active calls", active_total)
     c2.metric("Active correct", active_correct)
     c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
-    c4.metric("Active avg change", f"{active_avg_change:.2f}%")
+    c4.metric("What-if P/L", f"${combined_pnl:,.2f}", f"{combined_return:.2f}%")
 
     st.subheader("Portfolio performance")
     chart_range = st.radio(
@@ -688,8 +736,37 @@ with tab_dashboard:
         st.altair_chart(line_chart + zero_line, use_container_width=True)
 
     st.subheader("What-if portfolio")
-    what_if_df = build_what_if(tracker_df, starting_capital)
+    st.caption(
+        "This answers: if the starting capital was split equally across the model's active calls on Monday, "
+        "what would it be worth now?"
+    )
+
     st.dataframe(style_money(what_if_df), use_container_width=True, hide_index=True)
+
+    detail_buy, detail_sell, detail_combined = st.tabs(
+        ["BUY/UP details", "SELL/DOWN short details", "Combined details"]
+    )
+
+    with detail_buy:
+        st.dataframe(
+            style_money(build_what_if_positions(tracker_df, starting_capital, "BUY")),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with detail_sell:
+        st.dataframe(
+            style_money(build_what_if_positions(tracker_df, starting_capital, "SELL")),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with detail_combined:
+        st.dataframe(
+            style_money(build_what_if_positions(tracker_df, starting_capital, "COMBINED")),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
@@ -700,8 +777,8 @@ with tab_dashboard:
         st.dataframe(style_money(build_summary(tracker_df, "Action")), use_container_width=True, hide_index=True)
 
     with col2:
-        st.subheader("Accuracy by conviction")
-        st.dataframe(style_money(build_conviction_summary(tracker_df)), use_container_width=True, hide_index=True)
+        st.subheader("Accuracy by direction")
+        st.dataframe(style_money(build_summary(tracker_df, "Direction")), use_container_width=True, hide_index=True)
 
     st.subheader("Download results")
     st.download_button(
