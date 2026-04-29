@@ -340,6 +340,15 @@ def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.D
     return out
 
 
+def build_short_calculator_table(tracker_df: pd.DataFrame) -> pd.DataFrame:
+    return tracker_df[
+        (tracker_df["Action"] == "SELL")
+        & (tracker_df["Direction"] == "DOWN")
+        & (tracker_df["Monday Reference Price"].notna())
+        & (tracker_df["Current Price"].notna())
+    ].copy()
+
+
 def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
     """
     One-share what-if summary.
@@ -766,7 +775,7 @@ with tab_dashboard:
 
         st.altair_chart(line_chart + zero_line, use_container_width=True)
 
-    st.subheader("What If Positions")
+    st.subheader("Position details")
     st.caption(
         "Assumes 1 share bought for each BUY/UP call and 1 share shorted for each SELL/DOWN call at Monday's reference price."
     )
@@ -794,6 +803,73 @@ with tab_dashboard:
             style_money(build_what_if_positions(tracker_df, "COMBINED")),
             use_container_width=True,
             hide_index=True,
+        )
+
+    st.subheader("Short calculator")
+    st.caption(
+        "Paper calculator for shorting one of the model's SELL/DOWN calls. "
+        "It estimates profit/loss if the stock was shorted at the Monday reference price and covered now or at a target price."
+    )
+
+    short_df = build_short_calculator_table(tracker_df)
+
+    if short_df.empty:
+        st.info("No valid SELL/DOWN stocks available for the short calculator yet.")
+    else:
+        selected_short_ticker = st.selectbox(
+            "Select stock to short",
+            short_df["Ticker"].tolist(),
+            key="short_calc_ticker",
+        )
+
+        selected_row = short_df[short_df["Ticker"] == selected_short_ticker].iloc[0]
+
+        monday_price = float(selected_row["Monday Reference Price"])
+        current_price = float(selected_row["Current Price"])
+
+        col_a, col_b, col_c = st.columns(3)
+
+        with col_a:
+            short_amount = st.number_input(
+                "Dollar amount to short",
+                min_value=0.0,
+                value=1000.0,
+                step=100.0,
+                key="short_calc_amount",
+            )
+
+        with col_b:
+            target_cover_price = st.number_input(
+                "Target cover price",
+                min_value=0.01,
+                value=current_price,
+                step=1.0,
+                key="short_calc_target_price",
+            )
+
+        with col_c:
+            st.metric("Monday short price", f"${monday_price:,.2f}")
+            st.metric("Current price", f"${current_price:,.2f}")
+
+        shares_shorted = short_amount / monday_price if monday_price else 0.0
+
+        current_pnl = shares_shorted * (monday_price - current_price)
+        target_pnl = shares_shorted * (monday_price - target_cover_price)
+
+        current_return_pct = (current_pnl / short_amount * 100) if short_amount else 0.0
+        target_return_pct = (target_pnl / short_amount * 100) if short_amount else 0.0
+
+        calc_cols = st.columns(4)
+
+        calc_cols[0].metric("Shares shorted", f"{shares_shorted:,.4f}")
+        calc_cols[1].metric("P/L if covered now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
+        calc_cols[2].metric("P/L at target cover", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
+        calc_cols[3].metric("Target cover price", f"${target_cover_price:,.2f}")
+
+        st.caption(
+            "Short logic: if the stock falls, the short gains. If the stock rises, the short loses. "
+            "Example: short at $100 and cover at $90 = +$10 per share. "
+            "Short at $100 and cover at $110 = -$10 per share."
         )
 
     st.subheader("Tracker")
