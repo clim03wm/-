@@ -951,14 +951,8 @@ with tab_dashboard:
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Accuracy by action")
-        st.dataframe(style_money(build_summary(tracker_df, "Action")), use_container_width=True, hide_index=True)
-
-    with col2:
-        st.subheader("Accuracy by direction")
-        st.dataframe(style_money(build_summary(tracker_df, "Direction")), use_container_width=True, hide_index=True)
+    st.subheader("Accuracy by conviction")
+    st.dataframe(style_money(build_conviction_summary(tracker_df)), use_container_width=True, hide_index=True)
 
     st.subheader("Download results")
     st.download_button(
