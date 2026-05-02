@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from io import BytesIO
 import re
 
 import altair as alt
@@ -1865,9 +1866,23 @@ with tab_dashboard:
         st.dataframe(style_money(build_summary(tracker_df, "Direction")), use_container_width=True, hide_index=True)
 
     st.subheader("Download results")
+
+    weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
+    accuracy_action_df = build_summary(tracker_df, "Action")
+    accuracy_direction_df = build_summary(tracker_df, "Direction")
+
+    excel_bytes = build_excel_download(
+        tracker_df=tracker_df,
+        weekly_path_tracker_df=weekly_path_tracker_df,
+        weekly_group_summary_df=weekly_group_summary_df,
+        accuracy_action_df=accuracy_action_df,
+        accuracy_direction_df=accuracy_direction_df,
+        monday_date=monday_date,
+    )
+
     st.download_button(
-        "Download tracker CSV",
-        data=tracker_df.to_csv(index=False).encode("utf-8"),
-        file_name=f"manual_weekly_tracker_{monday_date}.csv",
-        mime="text/csv",
+        "Download color-coded Excel tracker",
+        data=excel_bytes,
+        file_name=f"manual_weekly_tracker_{monday_date}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
