@@ -50,6 +50,10 @@ DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL
 st.markdown(
     """
     <style>
+    html, body, [class*="css"] {
+        color: #111827 !important;
+    }
+
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
@@ -58,10 +62,10 @@ st.markdown(
 
     .chart-wrap {
         background: #ffffff;
-        border: 1px solid rgba(17, 24, 39, 0.08);
+        border: 1px solid #d1d5db;
         border-radius: 24px;
         padding: 20px 20px 12px 20px;
-        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
+        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
         margin-bottom: 24px;
     }
 
@@ -75,7 +79,7 @@ st.markdown(
 
     .chart-big-number {
         font-size: 36px;
-        font-weight: 800;
+        font-weight: 850;
         letter-spacing: -1.1px;
         color: #111827;
         line-height: 1;
@@ -83,26 +87,27 @@ st.markdown(
     }
 
     .chart-change-green {
-        color: #00C805;
+        color: #047857;
         font-size: 15px;
-        font-weight: 800;
+        font-weight: 850;
     }
 
     .chart-change-red {
-        color: #ef4444;
+        color: #b91c1c;
         font-size: 15px;
-        font-weight: 800;
+        font-weight: 850;
     }
 
     .chart-small-note {
-        color: #6b7280;
+        color: #374151;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 750;
+        text-align: right;
     }
 
     div[role="radiogroup"] {
-        background: #f9fafb;
-        border: 1px solid rgba(17, 24, 39, 0.07);
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
         padding: 4px;
         border-radius: 999px;
         width: fit-content;
@@ -112,14 +117,39 @@ st.markdown(
     div[role="radiogroup"] label {
         padding: 4px 10px;
         border-radius: 999px;
-        color: #6b7280;
-        font-weight: 700;
+        color: #111827 !important;
+        font-weight: 800;
     }
 
     div[role="radiogroup"] label:has(input:checked) {
-        background: white;
-        color: #00C805;
-        box-shadow: 0 1px 5px rgba(17, 24, 39, 0.12);
+        background: #ffffff;
+        color: #047857 !important;
+        box-shadow: 0 1px 5px rgba(17, 24, 39, 0.18);
+    }
+
+    .stCaption, [data-testid="stCaptionContainer"] {
+        color: #374151 !important;
+        font-weight: 600;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: #374151 !important;
+        font-weight: 750 !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #111827 !important;
+        font-weight: 850 !important;
+    }
+
+    [data-testid="stMetricDelta"] {
+        font-weight: 800 !important;
+    }
+
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #d1d5db;
+        border-radius: 14px;
+        overflow: hidden;
     }
     </style>
     """,
@@ -275,14 +305,6 @@ def fetch_position_return_series(
     model_rows: tuple[tuple[str, str, str], ...],
     monday_date: date,
 ) -> pd.DataFrame:
-    """
-    Builds portfolio return lines.
-
-    BUY/UP = long return.
-    SELL/DOWN = short return, so returns are inverted.
-    WATCH is ignored.
-    """
-
     if not model_rows:
         return pd.DataFrame()
 
@@ -461,14 +483,6 @@ def build_short_calculator_table(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    One-share what-if summary.
-
-    BUY/UP = buy 1 share at Monday reference price.
-    SELL/DOWN = short 1 share at Monday reference price.
-    WATCH is ignored.
-    """
-
     strategies = [
         (
             "BUY 1 share of each BUY/UP stock",
@@ -543,13 +557,6 @@ def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame:
-    """
-    One-share detail table.
-
-    BUY/UP = buy 1 share at Monday reference price.
-    SELL/DOWN = short 1 share at Monday reference price.
-    """
-
     side = side.upper()
 
     if side == "BUY":
@@ -750,8 +757,9 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     format=time_format,
                     tickCount=tick_count,
                     grid=False,
-                    labelColor="#6b7280",
+                    labelColor="#374151",
                     labelFontSize=12,
+                    labelFontWeight=650,
                 ),
             ),
             y=alt.Y(
@@ -760,9 +768,10 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                 scale=alt.Scale(zero=False),
                 axis=alt.Axis(
                     grid=True,
-                    gridColor="#eef2f7",
-                    labelColor="#9ca3af",
+                    gridColor="#dbe3ee",
+                    labelColor="#374151",
                     labelFontSize=12,
+                    labelFontWeight=650,
                 ),
             ),
             color=alt.Color(
@@ -775,16 +784,18 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                         "SELL short basket",
                     ],
                     range=[
-                        "#00C805",
-                        "#2563eb",
-                        "#ef4444",
+                        "#047857",
+                        "#1d4ed8",
+                        "#b91c1c",
                     ],
                 ),
                 legend=alt.Legend(
                     orient="top",
                     direction="horizontal",
-                    labelFontSize=12,
-                    symbolSize=120,
+                    labelFontSize=13,
+                    labelColor="#111827",
+                    labelFontWeight=750,
+                    symbolSize=140,
                 ),
             ),
             tooltip=[
@@ -799,7 +810,7 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
     zero_line = (
         alt.Chart(pd.DataFrame({"Return %": [0]}))
         .mark_rule(
-            color="#9ca3af",
+            color="#6b7280",
             strokeDash=[5, 5],
             strokeWidth=1.5,
         )
@@ -813,6 +824,8 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
     ).configure_axis(
         domain=False,
         ticks=False,
+        labelColor="#111827",
+        titleColor="#111827",
     )
 
     return chart, latest_return, (first_time, last_time)
@@ -823,50 +836,72 @@ def style_tracker(df: pd.DataFrame):
         value = str(value).upper()
 
         if value == "BUY":
-            return "background-color: #15803d; color: white; font-weight: 700;"
+            return "background-color: #047857; color: #ffffff; font-weight: 800;"
         if value == "SELL":
-            return "background-color: #b91c1c; color: white; font-weight: 700;"
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 800;"
         if value == "WATCH":
-            return "background-color: #ca8a04; color: black; font-weight: 700;"
+            return "background-color: #92400e; color: #ffffff; font-weight: 800;"
 
-        return ""
+        return "color: #111827;"
 
     def color_correct(value):
         value = str(value).upper()
 
         if value == "YES":
-            return "background-color: #15803d; color: white; font-weight: 700;"
+            return "background-color: #047857; color: #ffffff; font-weight: 800;"
         if value == "NO":
-            return "background-color: #b91c1c; color: white; font-weight: 700;"
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 800;"
         if value == "N/A":
-            return "background-color: #6b7280; color: white;"
+            return "background-color: #374151; color: #ffffff; font-weight: 800;"
 
-        return ""
+        return "color: #111827;"
 
     def color_direction(value):
         value = str(value).upper()
 
         if value == "UP":
-            return "background-color: #dcfce7; color: #14532d; font-weight: 700;"
+            return "background-color: #bbf7d0; color: #052e16; font-weight: 800;"
         if value == "DOWN":
-            return "background-color: #fee2e2; color: #7f1d1d; font-weight: 700;"
+            return "background-color: #fecaca; color: #450a0a; font-weight: 800;"
         if value == "NEUTRAL":
-            return "background-color: #e5e7eb; color: #111827; font-weight: 700;"
+            return "background-color: #d1d5db; color: #111827; font-weight: 800;"
 
-        return ""
+        return "color: #111827;"
+
+    def color_edge(value):
+        value = str(value).upper()
+
+        if value == "STRONG":
+            return "background-color: #1e3a8a; color: #ffffff; font-weight: 800;"
+        if value == "MODERATE":
+            return "background-color: #7c2d12; color: #ffffff; font-weight: 800;"
+        if value == "WEAK":
+            return "background-color: #374151; color: #ffffff; font-weight: 800;"
+
+        return "color: #111827;"
+
+    def color_regime(value):
+        value = str(value).upper()
+
+        if value == "EVENTFUL":
+            return "background-color: #581c87; color: #ffffff; font-weight: 800;"
+        if value == "NORMAL":
+            return "background-color: #e5e7eb; color: #111827; font-weight: 800;"
+
+        return "color: #111827;"
 
     def color_return(value):
         try:
             if value > 0:
-                return "color: #15803d; font-weight: 700;"
+                return "color: #047857; font-weight: 850;"
             if value < 0:
-                return "color: #b91c1c; font-weight: 700;"
+                return "color: #b91c1c; font-weight: 850;"
         except Exception:
             pass
 
-        return ""
+        return "color: #111827;"
 
-    return (
+    styled = (
         df.style
         .map(color_action, subset=["Action"])
         .map(color_direction, subset=["Direction", "Actual Direction So Far"])
@@ -884,6 +919,14 @@ def style_tracker(df: pd.DataFrame):
             na_rep="",
         )
     )
+
+    if "Edge" in df.columns:
+        styled = styled.map(color_edge, subset=["Edge"])
+
+    if "Regime" in df.columns:
+        styled = styled.map(color_regime, subset=["Regime"])
+
+    return styled
 
 
 def style_money(df: pd.DataFrame):
@@ -917,13 +960,49 @@ def style_money(df: pd.DataFrame):
     def color_num(value):
         try:
             if value > 0:
-                return "color: #15803d; font-weight: 700;"
+                return "color: #047857; font-weight: 850;"
             if value < 0:
-                return "color: #b91c1c; font-weight: 700;"
+                return "color: #b91c1c; font-weight: 850;"
         except Exception:
             pass
 
-        return ""
+        return "color: #111827; font-weight: 700;"
+
+    def color_action(value):
+        value = str(value).upper()
+
+        if value == "BUY":
+            return "background-color: #047857; color: #ffffff; font-weight: 800;"
+        if value == "SELL":
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 800;"
+        if value == "WATCH":
+            return "background-color: #92400e; color: #ffffff; font-weight: 800;"
+
+        return "color: #111827; font-weight: 700;"
+
+    def color_direction(value):
+        value = str(value).upper()
+
+        if value == "UP":
+            return "background-color: #bbf7d0; color: #052e16; font-weight: 800;"
+        if value == "DOWN":
+            return "background-color: #fecaca; color: #450a0a; font-weight: 800;"
+        if value == "NEUTRAL":
+            return "background-color: #d1d5db; color: #111827; font-weight: 800;"
+
+        return "color: #111827; font-weight: 700;"
+
+    def color_correct(value):
+        value = str(value).upper()
+
+        if value == "YES":
+            return "background-color: #047857; color: #ffffff; font-weight: 800;"
+        if value == "NO":
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 800;"
+        if value == "N/A":
+            return "background-color: #374151; color: #ffffff; font-weight: 800;"
+
+        return "color: #111827; font-weight: 700;"
 
     styled = df.style.format(format_map, na_rep="")
 
@@ -937,6 +1016,15 @@ def style_money(df: pd.DataFrame):
     ]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
+
+    if "Action" in df.columns:
+        styled = styled.map(color_action, subset=["Action"])
+
+    if "Direction" in df.columns:
+        styled = styled.map(color_direction, subset=["Direction"])
+
+    if "Correct So Far" in df.columns:
+        styled = styled.map(color_correct, subset=["Correct So Far"])
 
     return styled
 
