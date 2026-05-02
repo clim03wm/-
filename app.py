@@ -1,120 +1,96 @@
 # =========================
 # ROBINHOOD-STYLE PRICE CHART
+# No Plotly needed
 # =========================
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import altair as alt
 
 
-def make_robinhood_chart(
-    chart_df,
-    range_label="1D",
-    time_col="timestamp",
-    price_col="price",
-):
-    df = chart_df.copy()
-
-    if df.empty:
-        return go.Figure()
-
-    df[time_col] = pd.to_datetime(df[time_col])
-    df = df.sort_values(time_col)
-
-    first_price = float(df[price_col].iloc[0])
-    last_price = float(df[price_col].iloc[-1])
-
-    change = last_price - first_price
-    change_pct = (change / first_price) * 100 if first_price else 0
-
-    is_up = change >= 0
-    line_color = "#00C805" if is_up else "#FF5000"
-    fill_color = "rgba(0, 200, 5, 0.08)" if is_up else "rgba(255, 80, 0, 0.08)"
-
-    if range_label in ["LIVE", "1D"]:
-        tickformat = "%-I %p"
-        dtick = 60 * 60 * 1000
-
-    elif range_label == "2D":
-        tickformat = "%-I %p"
-        dtick = 4 * 60 * 60 * 1000
-
-    elif range_label == "1W":
-        tickformat = "%a"
-        dtick = 24 * 60 * 60 * 1000
-
-    else:
-        tickformat = "%b %-d"
-        dtick = None
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=df[time_col],
-            y=df[price_col],
-            mode="lines",
-            line=dict(
-                color=line_color,
-                width=2.6,
-                shape="spline",
-                smoothing=0.7,
-            ),
-            fill="tozeroy",
-            fillcolor=fill_color,
-            hovertemplate=(
-                "<b>$%{y:,.2f}</b><br>"
-                "%{x|%b %d, %-I:%M %p}"
-                "<extra></extra>"
-            ),
-        )
-    )
-
-    fig.update_layout(
-        height=340,
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        showlegend=False,
-        hovermode="x unified",
-        font=dict(
-            family="Inter, Arial, sans-serif",
-            color="#111827",
-            size=13,
-        ),
-        xaxis=dict(
-            showgrid=False,
-            showline=False,
-            zeroline=False,
-            tickformat=tickformat,
-            dtick=dtick,
-            tickfont=dict(color="#6B7280", size=12),
-            ticks="",
-            fixedrange=True,
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor="rgba(17, 24, 39, 0.08)",
-            showline=False,
-            zeroline=False,
-            tickfont=dict(color="#9CA3AF", size=12),
-            ticks="",
-            fixedrange=True,
-        ),
-        hoverlabel=dict(
-            bgcolor="white",
-            bordercolor="rgba(17, 24, 39, 0.12)",
-            font=dict(color="#111827", size=13),
-        ),
-    )
-
-    return fig, last_price, change, change_pct, is_up
+# =========================
+# SETTINGS
+# =========================
+# Change these only if your dataframe uses different column names.
+TIME_COL = "timestamp"
+PRICE_COL = "price"
 
 
-def filter_chart_range(df, range_label, time_col="timestamp"):
+# =========================
+# CSS
+# =========================
+
+st.markdown(
+    """
+    <style>
+    .chart-card {
+        background: white;
+        border: 1px solid rgba(17, 24, 39, 0.08);
+        border-radius: 22px;
+        padding: 22px 22px 16px 22px;
+        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
+        margin-bottom: 24px;
+    }
+
+    .chart-price {
+        font-size: 38px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: #111827;
+        line-height: 1;
+        margin-bottom: 8px;
+    }
+
+    .chart-change-up {
+        color: #00C805;
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    .chart-change-down {
+        color: #FF5000;
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    div[role="radiogroup"] {
+        background: #F9FAFB;
+        border: 1px solid rgba(17, 24, 39, 0.06);
+        padding: 4px;
+        border-radius: 999px;
+        width: fit-content;
+        margin-bottom: 12px;
+    }
+
+    div[role="radiogroup"] label {
+        padding: 4px 10px;
+        border-radius: 999px;
+        color: #6B7280;
+        font-weight: 600;
+    }
+
+    div[role="radiogroup"] label:has(input:checked) {
+        background: white;
+        color: #00C805;
+        box-shadow: 0 1px 5px rgba(17, 24, 39, 0.12);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =========================
+# HELPER FUNCTIONS
+# =========================
+
+def filter_chart_range(df, range_label, time_col):
     chart_df = df.copy()
 
-    chart_df[time_col] = pd.to_datetime(chart_df[time_col])
+    chart_df[time_col] = pd.to_datetime(chart_df[time_col], errors="coerce")
+    chart_df = chart_df.dropna(subset=[time_col])
     chart_df = chart_df.sort_values(time_col)
 
     if chart_df.empty:
@@ -137,88 +113,108 @@ def filter_chart_range(df, range_label, time_col="timestamp"):
     return chart_df
 
 
-st.markdown(
-    """
-    <style>
-    .chart-card {
-        background: white;
-        border: 1px solid rgba(17, 24, 39, 0.07);
-        border-radius: 22px;
-        padding: 22px 22px 12px 22px;
-        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
-        margin-bottom: 22px;
-    }
+def make_clean_chart(chart_df, range_label, time_col, price_col):
+    df = chart_df.copy()
 
-    .chart-top-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 8px;
-    }
+    if df.empty:
+        return None
 
-    .chart-price {
-        font-size: 38px;
-        font-weight: 800;
-        letter-spacing: -1.2px;
-        color: #111827;
-        line-height: 1;
-        margin-bottom: 8px;
-    }
+    df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+    df[price_col] = pd.to_numeric(df[price_col], errors="coerce")
+    df = df.dropna(subset=[time_col, price_col])
+    df = df.sort_values(time_col)
 
-    .chart-change-up {
-        color: #00C805;
-        font-size: 16px;
-        font-weight: 700;
-    }
+    if df.empty:
+        return None
 
-    .chart-change-down {
-        color: #FF5000;
-        font-size: 16px;
-        font-weight: 700;
-    }
+    first_price = float(df[price_col].iloc[0])
+    last_price = float(df[price_col].iloc[-1])
 
-    div[role="radiogroup"] {
-        background: #F9FAFB;
-        border: 1px solid rgba(17, 24, 39, 0.06);
-        padding: 4px;
-        border-radius: 999px;
-        width: fit-content;
-    }
+    change = last_price - first_price
+    change_pct = (change / first_price) * 100 if first_price else 0
 
-    div[role="radiogroup"] label {
-        padding: 4px 10px;
-        border-radius: 999px;
-        color: #6B7280;
-        font-weight: 600;
-    }
+    is_up = change >= 0
+    line_color = "#00C805" if is_up else "#FF5000"
 
-    div[role="radiogroup"] label:has(input:checked) {
-        background: white;
-        color: #00C805;
-        box-shadow: 0 1px 5px rgba(17, 24, 39, 0.12);
-    }
+    if range_label == "LIVE":
+        label_format = "%-I %p"
+        tick_count = 6
 
-    div[data-testid="stPlotlyChart"] {
-        margin-top: -6px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+    elif range_label == "1D":
+        label_format = "%-I %p"
+        tick_count = 8
+
+    elif range_label == "2D":
+        label_format = "%-I %p"
+        tick_count = 7
+
+    elif range_label == "1W":
+        label_format = "%a"
+        tick_count = 5
+
+    else:
+        label_format = "%b %-d"
+        tick_count = 6
+
+    base = alt.Chart(df).encode(
+        x=alt.X(
+            f"{time_col}:T",
+            axis=alt.Axis(
+                title=None,
+                format=label_format,
+                grid=False,
+                labelColor="#6B7280",
+                labelFontSize=12,
+                tickCount=tick_count,
+            ),
+        ),
+        y=alt.Y(
+            f"{price_col}:Q",
+            axis=alt.Axis(
+                title=None,
+                grid=True,
+                gridColor="rgba(17, 24, 39, 0.08)",
+                labelColor="#9CA3AF",
+                labelFontSize=12,
+            ),
+            scale=alt.Scale(zero=False),
+        ),
+    )
+
+    line = base.mark_line(
+        color=line_color,
+        strokeWidth=3,
+        interpolate="monotone",
+    )
+
+    points = base.mark_circle(
+        color=line_color,
+        size=30,
+        opacity=0,
+    ).encode(
+        tooltip=[
+            alt.Tooltip(f"{time_col}:T", title="Time"),
+            alt.Tooltip(f"{price_col}:Q", title="Price", format="$,.2f"),
+        ]
+    )
+
+    chart = (
+        line + points
+    ).properties(
+        height=330
+    ).configure_view(
+        strokeWidth=0
+    ).configure_axis(
+        domain=False,
+        ticks=False,
+    )
+
+    return chart, last_price, change, change_pct, is_up
 
 
 # =========================
-# USE THIS PART WHERE YOUR OLD GRAPH WAS
+# GRAPH UI
 # =========================
-
-# Your dataframe must have:
-# timestamp column = time/date
-# price column = stock price/current value
-#
-# If your current dataframe uses different names, change these:
-TIME_COL = "timestamp"
-PRICE_COL = "price"
 
 range_label = st.radio(
     "Chart Range",
@@ -234,39 +230,33 @@ chart_df = filter_chart_range(
     time_col=TIME_COL,
 )
 
-fig, last_price, change, change_pct, is_up = make_robinhood_chart(
+chart_result = make_clean_chart(
     chart_df,
     range_label=range_label,
     time_col=TIME_COL,
     price_col=PRICE_COL,
 )
 
-change_class = "chart-change-up" if is_up else "chart-change-down"
-change_sign = "+" if change >= 0 else ""
+if chart_result is None:
+    st.warning("No chart data available.")
+else:
+    chart, last_price, change, change_pct, is_up = chart_result
 
-st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+    change_class = "chart-change-up" if is_up else "chart-change-down"
+    change_sign = "+" if change >= 0 else ""
 
-st.markdown(
-    f"""
-    <div class="chart-top-row">
-        <div>
-            <div class="chart-price">${last_price:,.2f}</div>
-            <div class="{change_class}">
-                {change_sign}${change:,.2f} · {change_sign}{change_pct:.2f}%
-            </div>
+    st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div class="chart-price">${last_price:,.2f}</div>
+        <div class="{change_class}">
+            {change_sign}${change:,.2f} · {change_sign}{change_pct:.2f}%
         </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
 
-st.plotly_chart(
-    fig,
-    use_container_width=True,
-    config={
-        "displayModeBar": False,
-        "scrollZoom": False,
-    },
-)
+    st.altair_chart(chart, use_container_width=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
