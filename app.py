@@ -506,18 +506,24 @@ def build_weekly_price_tracker(
     path_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    For every stock, checks the whole week's intraday path.
+    Checks the whole week's intraday path for each stock.
 
-    UP prediction:
-      - true during week if price traded above Monday reference price
-      - best hit is the highest price
+    For UP:
+      - correct if price traded above Monday reference price
+      - best correct price is weekly high
 
-    DOWN prediction:
-      - true during week if price traded below Monday reference price
-      - best hit is the lowest price
+    For DOWN:
+      - correct if price traded below Monday reference price
+      - best correct price is weekly low
 
-    NEUTRAL prediction:
-      - true during week if the stock stayed within +/- 0.50% of Monday reference price
+    For NEUTRAL:
+      - correct if it stayed within +/- 0.50% of Monday reference price
+      - best correct price is the closest price to Monday reference price
+
+    Money logic:
+      - BUY/UP makes money at best correct price: best price - Monday price
+      - SELL/DOWN makes money at best correct price: Monday price - best price
+      - never-correct stocks get $0 for best-correct P/L
     """
     output_rows = []
 
@@ -530,25 +536,22 @@ def build_weekly_price_tracker(
         action = str(row.get("Action", "")).upper()
 
         monday_price = row.get("Monday Reference Price")
-        current_price = row.get("Current Price")
-
         stock_path = path_df[path_df["Ticker"] == ticker].copy()
 
         base = {
             "Ticker": ticker,
             "Action": action,
             "Predicted Direction": predicted,
-            "Monday Price": monday_price,
-            "Current Price": current_price,
-            "First True Time": None,
-            "Best True Time": None,
-            "Best True Price": None,
-            "Best True Move %": None,
-            "Worst Against Price": None,
-            "Worst Against Move %": None,
-            "Current Move %": None,
             "Prediction True During Week": "N/A",
-            "Current Correct": row.get("Correct So Far", "N/A"),
+            "Monday Price": monday_price,
+            "First Correct Time": None,
+            "Best Correct Time": None,
+            "Best Correct Price": None,
+            "Best Correct Move %": None,
+            "1-Share Best Correct P/L": 0.0,
+            "Final Price Used": None,
+            "Final Move %": None,
+            "Final 1-Share P/L": 0.0,
         }
 
         if pd.isna(monday_price) or stock_path.empty:
@@ -560,73 +563,73 @@ def build_weekly_price_tracker(
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
         stock_path = stock_path.sort_values("Time")
 
-        if pd.notna(current_price):
-            base["Current Move %"] = (float(current_price) - monday_price) / monday_price * 100
+        final_row = stock_path.iloc[-1]
+        final_price = float(final_row["Price"])
+        final_move_pct = float(final_row["Move %"])
+
+        base["Final Price Used"] = final_price
+        base["Final Move %"] = final_move_pct
 
         max_idx = stock_path["Price"].idxmax()
         min_idx = stock_path["Price"].idxmin()
-
         highest = stock_path.loc[max_idx]
         lowest = stock_path.loc[min_idx]
 
         if predicted == "UP":
             true_rows = stock_path[stock_path["Price"] > monday_price]
 
-            base["Best True Time"] = highest["Time"]
-            base["Best True Price"] = float(highest["Price"])
-            base["Best True Move %"] = float(highest["Move %"])
-
-            base["Worst Against Price"] = float(lowest["Price"])
-            base["Worst Against Move %"] = float(lowest["Move %"])
-
             if not true_rows.empty:
-                base["First True Time"] = true_rows.iloc[0]["Time"]
+                best = highest
+                best_price = float(best["Price"])
+                pnl = best_price - monday_price
+
                 base["Prediction True During Week"] = "YES"
+                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["Best Correct Time"] = best["Time"]
+                base["Best Correct Price"] = best_price
+                base["Best Correct Move %"] = float(best["Move %"])
+                base["1-Share Best Correct P/L"] = pnl
             else:
                 base["Prediction True During Week"] = "NO"
+
+            base["Final 1-Share P/L"] = final_price - monday_price
 
         elif predicted == "DOWN":
             true_rows = stock_path[stock_path["Price"] < monday_price]
 
-            base["Best True Time"] = lowest["Time"]
-            base["Best True Price"] = float(lowest["Price"])
-            base["Best True Move %"] = float(lowest["Move %"])
-
-            base["Worst Against Price"] = float(highest["Price"])
-            base["Worst Against Move %"] = float(highest["Move %"])
-
             if not true_rows.empty:
-                base["First True Time"] = true_rows.iloc[0]["Time"]
+                best = lowest
+                best_price = float(best["Price"])
+                pnl = monday_price - best_price
+
                 base["Prediction True During Week"] = "YES"
+                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["Best Correct Time"] = best["Time"]
+                base["Best Correct Price"] = best_price
+                base["Best Correct Move %"] = float(best["Move %"])
+                base["1-Share Best Correct P/L"] = pnl
             else:
                 base["Prediction True During Week"] = "NO"
+
+            base["Final 1-Share P/L"] = monday_price - final_price
 
         elif predicted == "NEUTRAL":
-            max_abs_move = float(stock_path["Move %"].abs().max())
-            stayed_flat = max_abs_move <= 0.50
+            true_rows = stock_path[stock_path["Move %"].abs() <= 0.50]
 
-            closest_idx = stock_path["Move %"].abs().idxmin()
-            closest = stock_path.loc[closest_idx]
+            if not true_rows.empty:
+                closest_idx = true_rows["Move %"].abs().idxmin()
+                best = true_rows.loc[closest_idx]
 
-            base["Best True Time"] = closest["Time"]
-            base["Best True Price"] = float(closest["Price"])
-            base["Best True Move %"] = float(closest["Move %"])
-
-            if stayed_flat:
-                base["First True Time"] = stock_path.iloc[0]["Time"]
                 base["Prediction True During Week"] = "YES"
+                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["Best Correct Time"] = best["Time"]
+                base["Best Correct Price"] = float(best["Price"])
+                base["Best Correct Move %"] = float(best["Move %"])
+                base["1-Share Best Correct P/L"] = 0.0
             else:
                 base["Prediction True During Week"] = "NO"
 
-            if abs(float(highest["Move %"])) >= abs(float(lowest["Move %"])):
-                base["Worst Against Price"] = float(highest["Price"])
-                base["Worst Against Move %"] = float(highest["Move %"])
-            else:
-                base["Worst Against Price"] = float(lowest["Price"])
-                base["Worst Against Move %"] = float(lowest["Move %"])
-
-        else:
-            base["Prediction True During Week"] = "N/A"
+            base["Final 1-Share P/L"] = 0.0
 
         output_rows.append(base)
 
@@ -640,33 +643,120 @@ def build_weekly_price_tracker(
         "Action",
         "Predicted Direction",
         "Prediction True During Week",
-        "Current Correct",
         "Monday Price",
-        "Current Price",
-        "Current Move %",
-        "First True Time",
-        "Best True Time",
-        "Best True Price",
-        "Best True Move %",
-        "Worst Against Price",
-        "Worst Against Move %",
+        "First Correct Time",
+        "Best Correct Time",
+        "Best Correct Price",
+        "Best Correct Move %",
+        "1-Share Best Correct P/L",
+        "Final Price Used",
+        "Final Move %",
+        "Final 1-Share P/L",
     ]
 
     return out[preferred_cols]
 
 
+def build_weekly_truth_summary(path_tracker_df: pd.DataFrame) -> dict:
+    if path_tracker_df.empty:
+        return {
+            "total": 0,
+            "true_count": 0,
+            "false_count": 0,
+            "true_pct": 0.0,
+            "best_correct_pnl": 0.0,
+            "final_pnl": 0.0,
+        }
+
+    valid = path_tracker_df[
+        path_tracker_df["Prediction True During Week"].isin(["YES", "NO"])
+    ].copy()
+
+    if valid.empty:
+        return {
+            "total": 0,
+            "true_count": 0,
+            "false_count": 0,
+            "true_pct": 0.0,
+            "best_correct_pnl": 0.0,
+            "final_pnl": 0.0,
+        }
+
+    true_count = int((valid["Prediction True During Week"] == "YES").sum())
+    false_count = int((valid["Prediction True During Week"] == "NO").sum())
+    total = int(len(valid))
+    true_pct = true_count / total * 100 if total else 0.0
+
+    best_correct_pnl = float(valid["1-Share Best Correct P/L"].fillna(0).sum())
+    final_pnl = float(valid["Final 1-Share P/L"].fillna(0).sum())
+
+    return {
+        "total": total,
+        "true_count": true_count,
+        "false_count": false_count,
+        "true_pct": true_pct,
+        "best_correct_pnl": best_correct_pnl,
+        "final_pnl": final_pnl,
+    }
+
+
+def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFrame:
+    if path_tracker_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "Group",
+                "Stocks",
+                "1-Share Best Correct P/L",
+                "Final 1-Share P/L",
+            ]
+        )
+
+    valid = path_tracker_df[
+        path_tracker_df["Prediction True During Week"].isin(["YES", "NO"])
+    ].copy()
+
+    if valid.empty:
+        return pd.DataFrame(
+            columns=[
+                "Group",
+                "Stocks",
+                "1-Share Best Correct P/L",
+                "Final 1-Share P/L",
+            ]
+        )
+
+    rows = []
+
+    for group_name, mask in [
+        ("True during week", valid["Prediction True During Week"] == "YES"),
+        ("False during week", valid["Prediction True During Week"] == "NO"),
+        ("All stocks", valid["Prediction True During Week"].isin(["YES", "NO"])),
+    ]:
+        group = valid[mask].copy()
+
+        rows.append(
+            {
+                "Group": group_name,
+                "Stocks": int(len(group)),
+                "1-Share Best Correct P/L": float(group["1-Share Best Correct P/L"].fillna(0).sum()),
+                "Final 1-Share P/L": float(group["Final 1-Share P/L"].fillna(0).sum()),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
 def style_weekly_path_tracker(df: pd.DataFrame):
     format_map = {
         "Monday Price": "${:,.2f}",
-        "Current Price": "${:,.2f}",
-        "Best True Price": "${:,.2f}",
-        "Worst Against Price": "${:,.2f}",
-        "Current Move %": "{:+.2f}%",
-        "Best True Move %": "{:+.2f}%",
-        "Worst Against Move %": "{:+.2f}%",
+        "Best Correct Price": "${:,.2f}",
+        "Best Correct Move %": "{:+.2f}%",
+        "1-Share Best Correct P/L": "${:+,.2f}",
+        "Final Price Used": "${:,.2f}",
+        "Final Move %": "{:+.2f}%",
+        "Final 1-Share P/L": "${:+,.2f}",
     }
 
-    for col in ["First True Time", "Best True Time"]:
+    for col in ["First Correct Time", "Best Correct Time"]:
         if col in df.columns:
             format_map[col] = lambda x: "" if pd.isna(x) else pd.to_datetime(x).strftime("%a %I:%M %p")
 
@@ -706,7 +796,7 @@ def style_weekly_path_tracker(df: pd.DataFrame):
 
         return "color: #f8fafc; font-weight: 700;"
 
-    def color_move(value):
+    def color_money(value):
         try:
             if value > 0:
                 return "color: #34d399; font-weight: 850;"
@@ -719,9 +809,8 @@ def style_weekly_path_tracker(df: pd.DataFrame):
 
     styled = df.style.format(format_map, na_rep="")
 
-    for col in ["Prediction True During Week", "Current Correct"]:
-        if col in df.columns:
-            styled = styled.map(color_yes_no, subset=[col])
+    if "Prediction True During Week" in df.columns:
+        styled = styled.map(color_yes_no, subset=["Prediction True During Week"])
 
     if "Action" in df.columns:
         styled = styled.map(color_action, subset=["Action"])
@@ -729,9 +818,14 @@ def style_weekly_path_tracker(df: pd.DataFrame):
     if "Predicted Direction" in df.columns:
         styled = styled.map(color_direction, subset=["Predicted Direction"])
 
-    for col in ["Current Move %", "Best True Move %", "Worst Against Move %"]:
+    for col in [
+        "Best Correct Move %",
+        "1-Share Best Correct P/L",
+        "Final Move %",
+        "Final 1-Share P/L",
+    ]:
         if col in df.columns:
-            styled = styled.map(color_move, subset=[col])
+            styled = styled.map(color_money, subset=[col])
 
     return styled
 
@@ -1251,6 +1345,9 @@ def style_money(df: pd.DataFrame):
         "Current Price",
         "Monday Entry Value",
         "Current Position Value",
+        "1-Share Best Correct P/L",
+        "Final 1-Share P/L",
+        "Final Price Used",
     ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
@@ -1443,39 +1540,82 @@ with tab_dashboard:
 
     st.subheader("Weekly price-path tracker")
     st.caption(
-        "Checks every intraday price this week. For UP calls, it shows when the stock first traded above Monday's price and its best high. "
-        "For DOWN calls, it shows when the stock first traded below Monday's price and its best low. "
-        "This tells you whether the prediction became true at any point during the week, not only right now."
+        "This checks whether each prediction became true at any point during the week. "
+        "It removes current price from this table and focuses on when the call was correct, the best correct price, and the 1-share profit/loss."
     )
 
     if weekly_path_tracker_df.empty:
         st.info("No weekly price-path data available yet.")
     else:
-        path_filter = st.radio(
-            "Show",
-            ["All stocks", "True during week", "False during week"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="weekly_path_filter",
-        )
+        true_week_df = weekly_path_tracker_df[
+            weekly_path_tracker_df["Prediction True During Week"] == "YES"
+        ].copy()
 
-        display_path_df = weekly_path_tracker_df.copy()
+        false_week_df = weekly_path_tracker_df[
+            weekly_path_tracker_df["Prediction True During Week"] == "NO"
+        ].copy()
 
-        if path_filter == "True during week":
-            display_path_df = display_path_df[
-                display_path_df["Prediction True During Week"] == "YES"
-            ]
+        all_week_df = weekly_path_tracker_df.copy()
 
-        elif path_filter == "False during week":
-            display_path_df = display_path_df[
-                display_path_df["Prediction True During Week"] == "NO"
-            ]
+        st.subheader("Weekly truth summary")
 
         st.dataframe(
-            style_weekly_path_tracker(display_path_df),
+            style_money(weekly_group_summary_df),
             use_container_width=True,
             hide_index=True,
         )
+
+        true_tab, false_tab, all_tab = st.tabs(
+            ["True during week", "False during week", "All stocks"]
+        )
+
+        display_cols = [
+            "Ticker",
+            "Action",
+            "Predicted Direction",
+            "Prediction True During Week",
+            "Monday Price",
+            "First Correct Time",
+            "Best Correct Time",
+            "Best Correct Price",
+            "Best Correct Move %",
+            "1-Share Best Correct P/L",
+            "Final Price Used",
+            "Final Move %",
+            "Final 1-Share P/L",
+        ]
+
+        with true_tab:
+            st.caption(
+                "These calls were correct at least once during the week. "
+                "Best Correct Price is the best price in the predicted direction."
+            )
+            st.dataframe(
+                style_weekly_path_tracker(true_week_df[display_cols]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with false_tab:
+            st.caption(
+                "These calls never became correct during the week. "
+                "Best-correct P/L stays at $0 because the predicted move never happened."
+            )
+            st.dataframe(
+                style_weekly_path_tracker(false_week_df[display_cols]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with all_tab:
+            st.caption(
+                "All stocks together, with final price kept only to show what the total ending result would be."
+            )
+            st.dataframe(
+                style_weekly_path_tracker(all_week_df[display_cols]),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         st.subheader("Position details")
     st.caption(
