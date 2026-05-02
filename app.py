@@ -1493,7 +1493,67 @@ def build_excel_download(
             export_weekly_df[col] = pd.to_datetime(export_weekly_df[col], errors="coerce")
             export_weekly_df[col] = export_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
 
+    # Full export sheet: model info + weekly truth data + current tracker fields.
+    # This is the main sheet you wanted: stock name, direction, conviction, edge,
+    # whether it was eventually right, when it happened, price difference since Monday, etc.
+    tracker_cols = [
+        "Ticker",
+        "Rank",
+        "Action",
+        "Direction",
+        "Conviction",
+        "Edge",
+        "Regime",
+        "Model Score",
+        "Expected Move %",
+        "Setup Score",
+        "Run Timestamp",
+        "Monday Reference Price",
+        "Current Price",
+        "Change Since Monday %",
+        "Actual Direction So Far",
+        "Correct So Far",
+        "Reference Price Source",
+        "Price Error",
+    ]
+
+    weekly_cols = [
+        "Ticker",
+        "Prediction True During Week",
+        "First Correct Time",
+        "Best Correct Time",
+        "Best Correct Price",
+        "Best Correct Move %",
+        "1-Share Best Correct P/L",
+        "Final Price Used",
+        "Final Move %",
+        "Final 1-Share P/L",
+    ]
+
+    safe_tracker_cols = [c for c in tracker_cols if c in tracker_df.columns]
+    safe_weekly_cols = [c for c in weekly_cols if c in export_weekly_df.columns]
+
+    full_detail_df = tracker_df[safe_tracker_cols].merge(
+        export_weekly_df[safe_weekly_cols],
+        on="Ticker",
+        how="left",
+    )
+
+    full_detail_df = full_detail_df.rename(
+        columns={
+            "Direction": "Predicted Direction",
+            "Monday Reference Price": "Monday Price",
+            "Change Since Monday %": "Current Move Since Monday %",
+            "Correct So Far": "Correct Right Now",
+            "Prediction True During Week": "Correct Eventually During Week",
+            "1-Share Best Correct P/L": "Best Exit 1-Share P/L",
+            "Final 1-Share P/L": "Held-To-Now 1-Share P/L",
+        }
+    )
+
+
     sheet_data = {
+        "Full Stock Details": full_detail_df,
         "Dashboard Summary": dashboard_summary_df,
         "Weekly Truth Summary": weekly_group_summary_df,
         "Weekly Price Tracker": export_weekly_df,
@@ -1540,6 +1600,8 @@ def build_excel_download(
         "Current Position Value",
         "Best Exit - Wrong P/L",
         "Wrong/Final 1-Share P/L",
+        "Best Exit 1-Share P/L",
+        "Held-To-Now 1-Share P/L",
     }
 
     percent_cols = {
@@ -1550,6 +1612,7 @@ def build_excel_download(
         "Accuracy %",
         "Avg Change Since Monday %",
         "Percent Return",
+        "Current Move Since Monday %",
     }
 
     def safe_value(value):
@@ -1562,7 +1625,7 @@ def build_excel_download(
     def apply_colors(cell, col_name, value):
         value_str = str(value).upper()
 
-        if col_name in ["Prediction True During Week", "Correct So Far", "Current Correct"]:
+        if col_name in ["Prediction True During Week", "Correct So Far", "Current Correct", "Correct Eventually During Week", "Correct Right Now"]:
             if value_str == "YES":
                 cell.fill = green_fill
                 cell.font = white_font
@@ -2104,7 +2167,7 @@ with tab_dashboard:
     )
 
     st.download_button(
-        "Download color-coded Excel tracker",
+        "Download full color-coded Excel tracker",
         data=excel_bytes,
         file_name=f"manual_weekly_tracker_{monday_date}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
