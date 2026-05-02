@@ -16,37 +16,6 @@ st.set_page_config(
 )
 
 
-DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL      -1.000    1.43      -0.000    2026-04-27T22:58:34+00:00
-2   EXPE      SELL      DOWN      88          STRONG    EVENTFUL    -0.970    -4.18     -0.000    2026-04-27T22:43:27+00:00
-3   FCX       SELL      DOWN      95          STRONG    EVENTFUL    -1.000    0.41      -0.000    2026-04-27T22:44:58+00:00
-4   TSLA      SELL      DOWN      67          MODERATE  NORMAL      -1.000    0.72      -0.000    2026-04-27T23:02:44+00:00
-5   XOM       SELL      DOWN      61          MODERATE  NORMAL      -0.638    1.63      -0.000    2026-04-27T22:43:41+00:00
-6   VLTO      SELL      DOWN      54          MODERATE  NORMAL      -0.560    -2.82     -0.000    2026-04-27T23:04:54+00:00
-7   BLK       BUY       UP        51          MODERATE  NORMAL      0.535     4.22      -0.000    2026-04-27T22:34:05+00:00
-8   MCO       BUY       UP        48          MODERATE  NORMAL      0.495     3.46      -0.000    2026-04-27T22:53:56+00:00
-9   SMCI      SELL      DOWN      50          MODERATE  NORMAL      -0.631    -7.38     -0.000    2026-04-27T23:01:47+00:00
-10  RCL       SELL      DOWN      45          MODERATE  NORMAL      -0.472    -3.04     -0.000    2026-04-27T23:00:02+00:00
-11  BA        BUY       UP        46          MODERATE  NORMAL      0.444     3.27      -0.000    2026-04-27T22:34:22+00:00
-12  NCLH      SELL      DOWN      50          MODERATE  EVENTFUL    -0.514    -2.80     -0.000    2026-04-27T22:55:20+00:00
-13  VST       WATCH     UP        42          WEAK      NORMAL      0.455     4.64      -0.000    2026-04-27T23:05:39+00:00
-14  COF       WATCH     UP        40          WEAK      NORMAL      0.428     5.55      -0.000    2026-04-27T22:35:36+00:00
-15  CARR      WATCH     UP        43          WEAK      NORMAL      0.452     3.17      -0.000    2026-04-27T22:35:49+00:00
-16  MSCI      WATCH     UP        43          WEAK      NORMAL      0.443     2.87      -0.000    2026-04-27T22:54:18+00:00
-17  APTV      WATCH     UP        39          WEAK      NORMAL      0.407     4.83      -0.000    2026-04-27T22:32:17+00:00
-18  EL        WATCH     UP        39          WEAK      NORMAL      0.389     4.99      -0.000    2026-04-27T22:43:01+00:00
-19  ALLE      WATCH     UP        35          WEAK      NORMAL      0.421     6.07      -0.000    2026-04-27T22:30:17+00:00
-20  DOV       WATCH     UP        43          WEAK      NORMAL      0.439     2.22      -0.000    2026-04-27T22:41:12+00:00
-21  ARE       WATCH     UP        38          WEAK      NORMAL      0.385     4.88      -0.000    2026-04-27T22:30:08+00:00
-22  AXP       WATCH     UP        38          WEAK      NORMAL      0.396     4.55      -0.000    2026-04-27T22:31:06+00:00
-23  ROK       WATCH     UP        39          WEAK      NORMAL      0.418     3.78      -0.000    2026-04-27T22:59:44+00:00
-24  RF        WATCH     UP        42          WEAK      NORMAL      0.394     2.80      -0.000    2026-04-27T22:59:22+00:00
-25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
-
-
-# =========================
-# CSS
-# =========================
-
 st.markdown(
     """
     <style>
@@ -157,9 +126,33 @@ st.markdown(
 )
 
 
-# =========================
-# CORE HELPERS
-# =========================
+DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL      -1.000    1.43      -0.000    2026-04-27T22:58:34+00:00
+2   EXPE      SELL      DOWN      88          STRONG    EVENTFUL    -0.970    -4.18     -0.000    2026-04-27T22:43:27+00:00
+3   FCX       SELL      DOWN      95          STRONG    EVENTFUL    -1.000    0.41      -0.000    2026-04-27T22:44:58+00:00
+4   TSLA      SELL      DOWN      67          MODERATE  NORMAL      -1.000    0.72      -0.000    2026-04-27T23:02:44+00:00
+5   XOM       SELL      DOWN      61          MODERATE  NORMAL      -0.638    1.63      -0.000    2026-04-27T22:43:41+00:00
+6   VLTO      SELL      DOWN      54          MODERATE  NORMAL      -0.560    -2.82     -0.000    2026-04-27T23:04:54+00:00
+7   BLK       BUY       UP        51          MODERATE  NORMAL      0.535     4.22      -0.000    2026-04-27T22:34:05+00:00
+8   MCO       BUY       UP        48          MODERATE  NORMAL      0.495     3.46      -0.000    2026-04-27T22:53:56+00:00
+9   SMCI      SELL      DOWN      50          MODERATE  NORMAL      -0.631    -7.38     -0.000    2026-04-27T23:01:47+00:00
+10  RCL       SELL      DOWN      45          MODERATE  NORMAL      -0.472    -3.04     -0.000    2026-04-27T23:00:02+00:00
+11  BA        BUY       UP        46          MODERATE  NORMAL      0.444     3.27      -0.000    2026-04-27T22:34:22+00:00
+12  NCLH      SELL      DOWN      50          MODERATE  EVENTFUL    -0.514    -2.80     -0.000    2026-04-27T22:55:20+00:00
+13  VST       WATCH     UP        42          WEAK      NORMAL      0.455     4.64      -0.000    2026-04-27T23:05:39+00:00
+14  COF       WATCH     UP        40          WEAK      NORMAL      0.428     5.55      -0.000    2026-04-27T22:35:36+00:00
+15  CARR      WATCH     UP        43          WEAK      NORMAL      0.452     3.17      -0.000    2026-04-27T22:35:49+00:00
+16  MSCI      WATCH     UP        43          WEAK      NORMAL      0.443     2.87      -0.000    2026-04-27T22:54:18+00:00
+17  APTV      WATCH     UP        39          WEAK      NORMAL      0.407     4.83      -0.000    2026-04-27T22:32:17+00:00
+18  EL        WATCH     UP        39          WEAK      NORMAL      0.389     4.99      -0.000    2026-04-27T22:43:01+00:00
+19  ALLE      WATCH     UP        35          WEAK      NORMAL      0.421     6.07      -0.000    2026-04-27T22:30:17+00:00
+20  DOV       WATCH     UP        43          WEAK      NORMAL      0.439     2.22      -0.000    2026-04-27T22:41:12+00:00
+21  ARE       WATCH     UP        38          WEAK      NORMAL      0.385     4.88      -0.000    2026-04-27T22:30:08+00:00
+22  AXP       WATCH     UP        38          WEAK      NORMAL      0.396     4.55      -0.000    2026-04-27T22:31:06+00:00
+23  ROK       WATCH     UP        39          WEAK      NORMAL      0.418     3.78      -0.000    2026-04-27T22:59:44+00:00
+24  RF        WATCH     UP        42          WEAK      NORMAL      0.394     2.80      -0.000    2026-04-27T22:59:22+00:00
+25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
+
+
 
 def this_weeks_monday(today: date | None = None) -> date:
     today = today or date.today()
@@ -175,7 +168,6 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
 
     for line in raw_text.splitlines():
         line = line.strip()
-
         if not line or line.lower().startswith("rank"):
             continue
 
@@ -243,7 +235,6 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
                 if not monday_rows.empty and "close" in monday_rows.columns:
                     window_start = datetime.combine(monday_date, time(11, 30))
                     window_end = datetime.combine(monday_date, time(12, 30))
-
                     noon_window = monday_rows[
                         (monday_rows.index >= window_start)
                         & (monday_rows.index <= window_end)
@@ -301,10 +292,14 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_position_return_series(
-    model_rows: tuple[tuple[str, str, str], ...],
-    monday_date: date,
-) -> pd.DataFrame:
+def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], monday_date: date) -> pd.DataFrame:
+    """
+    Builds Robinhood-style portfolio lines.
+
+    BUY/UP = long return
+    SELL/DOWN = short return, so returns are inverted
+    WATCH is ignored
+    """
     if not model_rows:
         return pd.DataFrame()
 
@@ -318,10 +313,7 @@ def fetch_position_return_series(
         action = str(action).upper()
         direction = str(direction).upper()
 
-        valid_buy = action == "BUY" and direction == "UP"
-        valid_sell = action == "SELL" and direction == "DOWN"
-
-        if not (valid_buy or valid_sell):
+        if not ((action == "BUY" and direction == "UP") or (action == "SELL" and direction == "DOWN")):
             continue
 
         symbol = yahoo_symbol(ticker)
@@ -351,13 +343,11 @@ def fetch_position_return_series(
                 continue
 
             monday_rows = df[df.index.date == monday_date]
-
             if monday_rows.empty:
                 continue
 
             window_start = datetime.combine(monday_date, time(11, 30))
             window_end = datetime.combine(monday_date, time(12, 30))
-
             noon_window = monday_rows[
                 (monday_rows.index >= window_start)
                 & (monday_rows.index <= window_end)
@@ -370,11 +360,11 @@ def fetch_position_return_series(
 
             long_pct = (df["close"] - ref_price) / ref_price * 100
 
-            if valid_buy:
+            if action == "BUY" and direction == "UP":
                 long_pct.name = ticker
                 buy_series.append(long_pct)
 
-            if valid_sell:
+            if action == "SELL" and direction == "DOWN":
                 short_pct = -long_pct
                 short_pct.name = ticker
                 sell_series.append(short_pct)
@@ -410,7 +400,6 @@ def filter_chart_range(chart_df: pd.DataFrame, selected_range: str) -> pd.DataFr
 
     chart_df = chart_df.copy()
     chart_df.index = pd.to_datetime(chart_df.index).tz_localize(None)
-
     latest_time = chart_df.index.max()
 
     if selected_range == "LIVE":
@@ -469,7 +458,6 @@ def add_tracking_columns(model_df: pd.DataFrame, price_df: pd.DataFrame) -> pd.D
         return "NO"
 
     out["Correct So Far"] = out.apply(correct, axis=1)
-
     return out
 
 
@@ -483,6 +471,13 @@ def build_short_calculator_table(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    One-share what-if summary.
+
+    BUY/UP = buy 1 share at Monday reference price.
+    SELL/DOWN = short 1 share at Monday reference price.
+    WATCH is ignored.
+    """
     strategies = [
         (
             "BUY 1 share of each BUY/UP stock",
@@ -505,7 +500,6 @@ def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
     for name, mask in strategies:
         basket = tracker_df[mask].copy()
-
         total_entry_value = 0.0
         total_current_value = 0.0
         total_pnl = 0.0
@@ -527,11 +521,9 @@ def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
             if action == "BUY" and direction == "UP":
                 pnl = current_price - monday_price
                 current_position_value = current_price
-
             elif action == "SELL" and direction == "DOWN":
                 pnl = monday_price - current_price
                 current_position_value = monday_price + pnl
-
             else:
                 continue
 
@@ -557,6 +549,12 @@ def build_what_if(tracker_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame:
+    """
+    One-share detail table.
+
+    BUY/UP = buy 1 share at Monday reference price.
+    SELL/DOWN = short 1 share at Monday reference price.
+    """
     side = side.upper()
 
     if side == "BUY":
@@ -566,7 +564,6 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
             & (tracker_df["Change Since Monday %"].notna())
         ].copy()
         position_type = "Long"
-
     elif side == "SELL":
         basket = tracker_df[
             (tracker_df["Action"] == "SELL")
@@ -574,7 +571,6 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
             & (tracker_df["Change Since Monday %"].notna())
         ].copy()
         position_type = "Short"
-
     else:
         basket = tracker_df[
             (
@@ -616,18 +612,17 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
 
         monday_price = float(monday_price)
         current_price = float(current_price)
+
         shares = 1.0
 
         if action == "BUY" and direction == "UP":
             pos_return = stock_move
             pos_label = "Long"
             pnl = current_price - monday_price
-
         elif action == "SELL" and direction == "DOWN":
             pos_return = -stock_move
             pos_label = "Short"
             pnl = monday_price - current_price
-
         else:
             continue
 
@@ -650,19 +645,12 @@ def build_what_if_positions(tracker_df: pd.DataFrame, side: str) -> pd.DataFrame
 
 
 def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
+    # WATCH is intentionally excluded from summaries.
     active = df[df["Action"].isin(["BUY", "SELL"])].copy()
     valid = active[active["Correct So Far"].isin(["YES", "NO"])].copy()
 
     if valid.empty:
-        return pd.DataFrame(
-            columns=[
-                group_col,
-                "Stocks",
-                "Correct",
-                "Accuracy %",
-                "Avg Change Since Monday %",
-            ]
-        )
+        return pd.DataFrame(columns=[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"])
 
     valid["Correct Flag"] = (valid["Correct So Far"] == "YES").astype(int)
 
@@ -677,16 +665,7 @@ def build_summary(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
     )
 
     out["Accuracy %"] = out["Correct"] / out["Stocks"] * 100
-
-    return out[
-        [
-            group_col,
-            "Stocks",
-            "Correct",
-            "Accuracy %",
-            "Avg Change Since Monday %",
-        ]
-    ]
+    return out[[group_col, "Stocks", "Correct", "Accuracy %", "Avg Change Since Monday %"]]
 
 
 def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
@@ -711,9 +690,7 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
         .sort_values("Basket")
     )
 
-    combined_latest = latest_rows[
-        latest_rows["Basket"] == "Combined active basket"
-    ]
+    combined_latest = latest_rows[latest_rows["Basket"] == "Combined active basket"]
 
     if not combined_latest.empty:
         latest_return = float(combined_latest["Return %"].iloc[0])
@@ -726,19 +703,15 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
     if chart_range == "LIVE":
         time_format = "%I %p"
         tick_count = 6
-
     elif chart_range == "1D":
         time_format = "%I %p"
         tick_count = 8
-
     elif chart_range == "2D":
         time_format = "%I %p"
         tick_count = 7
-
     elif chart_range == "1W":
         time_format = "%a"
         tick_count = 5
-
     else:
         time_format = "%b %d"
         tick_count = 6
@@ -759,7 +732,6 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     grid=False,
                     labelColor="#374151",
                     labelFontSize=12,
-                    labelFontWeight=650,
                 ),
             ),
             y=alt.Y(
@@ -771,7 +743,6 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     gridColor="#dbe3ee",
                     labelColor="#374151",
                     labelFontSize=12,
-                    labelFontWeight=650,
                 ),
             ),
             color=alt.Color(
@@ -794,7 +765,6 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     direction="horizontal",
                     labelFontSize=13,
                     labelColor="#111827",
-                    labelFontWeight=750,
                     symbolSize=140,
                 ),
             ),
@@ -968,18 +938,6 @@ def style_money(df: pd.DataFrame):
 
         return "color: #111827; font-weight: 700;"
 
-    def color_action(value):
-        value = str(value).upper()
-
-        if value == "BUY":
-            return "background-color: #047857; color: #ffffff; font-weight: 800;"
-        if value == "SELL":
-            return "background-color: #b91c1c; color: #ffffff; font-weight: 800;"
-        if value == "WATCH":
-            return "background-color: #92400e; color: #ffffff; font-weight: 800;"
-
-        return "color: #111827; font-weight: 700;"
-
     def color_direction(value):
         value = str(value).upper()
 
@@ -1017,9 +975,6 @@ def style_money(df: pd.DataFrame):
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
 
-    if "Action" in df.columns:
-        styled = styled.map(color_action, subset=["Action"])
-
     if "Direction" in df.columns:
         styled = styled.map(color_direction, subset=["Direction"])
 
@@ -1029,14 +984,8 @@ def style_money(df: pd.DataFrame):
     return styled
 
 
-# =========================
-# APP
-# =========================
-
 st.title("Manual Weekly Stock Signal Tracker")
-st.caption(
-    "Tracks this week's model output against this week's Monday reference price, not daily percent change."
-)
+st.caption("Tracks this week's model output against this week's Monday reference price, not daily percent change.")
 
 if "raw_model_output" not in st.session_state:
     st.session_state["raw_model_output"] = DEFAULT_TEXT
@@ -1057,19 +1006,13 @@ monday_date = this_weeks_monday()
 with tab_dashboard:
     st.caption(f"Reference period: this week's Monday ({monday_date}) to now.")
 
+    # Position tables use a simple one-share-per-stock model.
+
     if model_df.empty:
         st.warning("No valid rows found. Paste your model output in the second tab.")
         st.stop()
 
-    tickers = tuple(
-        model_df["Ticker"]
-        .dropna()
-        .astype(str)
-        .str.upper()
-        .unique()
-        .tolist()
-    )
-
+    tickers = tuple(model_df["Ticker"].dropna().astype(str).str.upper().unique().tolist())
     model_rows = tuple(
         model_df[["Ticker", "Action", "Direction"]]
         .dropna()
@@ -1092,10 +1035,7 @@ with tab_dashboard:
     active_accuracy = active_correct / active_total * 100 if active_total else 0
 
     what_if_df = build_what_if(tracker_df)
-
-    combined_row = what_if_df[
-        what_if_df["Strategy"] == "Combined active calls: 1 share each BUY/UP + SELL/DOWN"
-    ]
+    combined_row = what_if_df[what_if_df["Strategy"] == "Combined active calls: 1 share each BUY/UP + SELL/DOWN"]
 
     if not combined_row.empty and pd.notna(combined_row["Dollar P/L"].iloc[0]):
         combined_pnl = float(combined_row["Dollar P/L"].iloc[0])
@@ -1105,7 +1045,6 @@ with tab_dashboard:
         combined_return = 0.0
 
     c1, c2, c3, c4 = st.columns(4)
-
     c1.metric("Active calls", active_total)
     c2.metric("Active correct", active_correct)
     c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
@@ -1135,7 +1074,6 @@ with tab_dashboard:
             st.info("No portfolio chart data available yet.")
         else:
             first_time, last_time = time_window
-
             change_class = "chart-change-green" if latest_return >= 0 else "chart-change-red"
             change_sign = "+" if latest_return >= 0 else ""
 
@@ -1201,9 +1139,7 @@ with tab_dashboard:
     if short_df.empty:
         st.info("No valid SELL/DOWN stocks available yet.")
     else:
-        calc_tab_short, calc_tab_put = st.tabs(
-            ["Paper short calculator", "Put option calculator"]
-        )
+        calc_tab_short, calc_tab_put = st.tabs(["Paper short calculator", "Put option calculator"])
 
         with calc_tab_short:
             selected_short_ticker = st.selectbox(
@@ -1252,16 +1188,8 @@ with tab_dashboard:
             calc_cols = st.columns(4)
 
             calc_cols[0].metric("Shares shorted", f"{shares_shorted:,.4f}")
-            calc_cols[1].metric(
-                "P/L if covered now",
-                f"${current_pnl:,.2f}",
-                f"{current_return_pct:.2f}%",
-            )
-            calc_cols[2].metric(
-                "P/L at target cover",
-                f"${target_pnl:,.2f}",
-                f"{target_return_pct:.2f}%",
-            )
+            calc_cols[1].metric("P/L if covered now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
+            calc_cols[2].metric("P/L at target cover", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
             calc_cols[3].metric("Target cover price", f"${target_cover_price:,.2f}")
 
             st.caption(
@@ -1334,16 +1262,8 @@ with tab_dashboard:
             put_metrics[0].metric("Stock Monday price", f"${monday_price:,.2f}")
             put_metrics[1].metric("Stock current price", f"${current_price:,.2f}")
             put_metrics[2].metric("Total option cost", f"${total_cost:,.2f}")
-            put_metrics[3].metric(
-                "P/L now",
-                f"${current_pnl:,.2f}",
-                f"{current_return_pct:.2f}%",
-            )
-            put_metrics[4].metric(
-                "P/L at target",
-                f"${target_pnl:,.2f}",
-                f"{target_return_pct:.2f}%",
-            )
+            put_metrics[3].metric("P/L now", f"${current_pnl:,.2f}", f"{current_return_pct:.2f}%")
+            put_metrics[4].metric("P/L at target", f"${target_pnl:,.2f}", f"{target_return_pct:.2f}%")
 
             st.caption(
                 "Put option logic: one contract usually controls 100 shares. "
@@ -1352,29 +1272,16 @@ with tab_dashboard:
             )
 
     st.subheader("Tracker")
-    st.dataframe(
-        style_tracker(tracker_df),
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
     col1, col2 = st.columns(2)
-
     with col1:
         st.subheader("Accuracy by action")
-        st.dataframe(
-            style_money(build_summary(tracker_df, "Action")),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(style_money(build_summary(tracker_df, "Action")), use_container_width=True, hide_index=True)
 
     with col2:
         st.subheader("Accuracy by direction")
-        st.dataframe(
-            style_money(build_summary(tracker_df, "Direction")),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(style_money(build_summary(tracker_df, "Direction")), use_container_width=True, hide_index=True)
 
     st.subheader("Download results")
     st.download_button(
