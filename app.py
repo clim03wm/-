@@ -448,6 +448,293 @@ def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], m
     return chart_df.dropna(how="all")
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_week_price_paths(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
+    """
+    Gets intraday close prices for every ticker from this week's Monday to now.
+    Used to check whether each prediction became true at any point during the week.
+    """
+    records = []
+    start_date = monday_date
+    end_date = datetime.now().date() + timedelta(days=1)
+
+    for ticker in tickers:
+        symbol = yahoo_symbol(ticker)
+
+        try:
+            df = yf.download(
+                symbol,
+                start=start_date.isoformat(),
+                end=end_date.isoformat(),
+                interval="30m",
+                auto_adjust=True,
+                progress=False,
+                prepost=False,
+                threads=False,
+            )
+
+            if df is None or df.empty:
+                continue
+
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [c[0] for c in df.columns]
+
+            df = df.rename(columns=str.lower)
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+
+            if "close" not in df.columns:
+                continue
+
+            path = df[["close"]].dropna().copy()
+            path["Ticker"] = ticker
+            path["Time"] = path.index
+            path = path.rename(columns={"close": "Price"})
+
+            records.append(path[["Ticker", "Time", "Price"]])
+
+        except Exception:
+            continue
+
+    if not records:
+        return pd.DataFrame(columns=["Ticker", "Time", "Price"])
+
+    return pd.concat(records, ignore_index=True)
+
+
+def build_weekly_price_tracker(
+    tracker_df: pd.DataFrame,
+    path_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    For every stock, checks the whole week's intraday path.
+
+    UP prediction:
+      - true during week if price traded above Monday reference price
+      - best hit is the highest price
+
+    DOWN prediction:
+      - true during week if price traded below Monday reference price
+      - best hit is the lowest price
+
+    NEUTRAL prediction:
+      - true during week if the stock stayed within +/- 0.50% of Monday reference price
+    """
+    output_rows = []
+
+    if tracker_df.empty:
+        return pd.DataFrame()
+
+    for _, row in tracker_df.iterrows():
+        ticker = str(row.get("Ticker", "")).upper()
+        predicted = str(row.get("Direction", "")).upper()
+        action = str(row.get("Action", "")).upper()
+
+        monday_price = row.get("Monday Reference Price")
+        current_price = row.get("Current Price")
+
+        stock_path = path_df[path_df["Ticker"] == ticker].copy()
+
+        base = {
+            "Ticker": ticker,
+            "Action": action,
+            "Predicted Direction": predicted,
+            "Monday Price": monday_price,
+            "Current Price": current_price,
+            "First True Time": None,
+            "Best True Time": None,
+            "Best True Price": None,
+            "Best True Move %": None,
+            "Worst Against Price": None,
+            "Worst Against Move %": None,
+            "Current Move %": None,
+            "Prediction True During Week": "N/A",
+            "Current Correct": row.get("Correct So Far", "N/A"),
+        }
+
+        if pd.isna(monday_price) or stock_path.empty:
+            output_rows.append(base)
+            continue
+
+        monday_price = float(monday_price)
+
+        stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
+        stock_path = stock_path.sort_values("Time")
+
+        if pd.notna(current_price):
+            base["Current Move %"] = (float(current_price) - monday_price) / monday_price * 100
+
+        max_idx = stock_path["Price"].idxmax()
+        min_idx = stock_path["Price"].idxmin()
+
+        highest = stock_path.loc[max_idx]
+        lowest = stock_path.loc[min_idx]
+
+        if predicted == "UP":
+            true_rows = stock_path[stock_path["Price"] > monday_price]
+
+            base["Best True Time"] = highest["Time"]
+            base["Best True Price"] = float(highest["Price"])
+            base["Best True Move %"] = float(highest["Move %"])
+
+            base["Worst Against Price"] = float(lowest["Price"])
+            base["Worst Against Move %"] = float(lowest["Move %"])
+
+            if not true_rows.empty:
+                base["First True Time"] = true_rows.iloc[0]["Time"]
+                base["Prediction True During Week"] = "YES"
+            else:
+                base["Prediction True During Week"] = "NO"
+
+        elif predicted == "DOWN":
+            true_rows = stock_path[stock_path["Price"] < monday_price]
+
+            base["Best True Time"] = lowest["Time"]
+            base["Best True Price"] = float(lowest["Price"])
+            base["Best True Move %"] = float(lowest["Move %"])
+
+            base["Worst Against Price"] = float(highest["Price"])
+            base["Worst Against Move %"] = float(highest["Move %"])
+
+            if not true_rows.empty:
+                base["First True Time"] = true_rows.iloc[0]["Time"]
+                base["Prediction True During Week"] = "YES"
+            else:
+                base["Prediction True During Week"] = "NO"
+
+        elif predicted == "NEUTRAL":
+            max_abs_move = float(stock_path["Move %"].abs().max())
+            stayed_flat = max_abs_move <= 0.50
+
+            closest_idx = stock_path["Move %"].abs().idxmin()
+            closest = stock_path.loc[closest_idx]
+
+            base["Best True Time"] = closest["Time"]
+            base["Best True Price"] = float(closest["Price"])
+            base["Best True Move %"] = float(closest["Move %"])
+
+            if stayed_flat:
+                base["First True Time"] = stock_path.iloc[0]["Time"]
+                base["Prediction True During Week"] = "YES"
+            else:
+                base["Prediction True During Week"] = "NO"
+
+            if abs(float(highest["Move %"])) >= abs(float(lowest["Move %"])):
+                base["Worst Against Price"] = float(highest["Price"])
+                base["Worst Against Move %"] = float(highest["Move %"])
+            else:
+                base["Worst Against Price"] = float(lowest["Price"])
+                base["Worst Against Move %"] = float(lowest["Move %"])
+
+        else:
+            base["Prediction True During Week"] = "N/A"
+
+        output_rows.append(base)
+
+    out = pd.DataFrame(output_rows)
+
+    if out.empty:
+        return out
+
+    preferred_cols = [
+        "Ticker",
+        "Action",
+        "Predicted Direction",
+        "Prediction True During Week",
+        "Current Correct",
+        "Monday Price",
+        "Current Price",
+        "Current Move %",
+        "First True Time",
+        "Best True Time",
+        "Best True Price",
+        "Best True Move %",
+        "Worst Against Price",
+        "Worst Against Move %",
+    ]
+
+    return out[preferred_cols]
+
+
+def style_weekly_path_tracker(df: pd.DataFrame):
+    format_map = {
+        "Monday Price": "${:,.2f}",
+        "Current Price": "${:,.2f}",
+        "Best True Price": "${:,.2f}",
+        "Worst Against Price": "${:,.2f}",
+        "Current Move %": "{:+.2f}%",
+        "Best True Move %": "{:+.2f}%",
+        "Worst Against Move %": "{:+.2f}%",
+    }
+
+    for col in ["First True Time", "Best True Time"]:
+        if col in df.columns:
+            format_map[col] = lambda x: "" if pd.isna(x) else pd.to_datetime(x).strftime("%a %I:%M %p")
+
+    def color_yes_no(value):
+        value = str(value).upper()
+
+        if value == "YES":
+            return "background-color: #047857; color: #ffffff; font-weight: 850;"
+        if value == "NO":
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 850;"
+        if value == "N/A":
+            return "background-color: #374151; color: #ffffff; font-weight: 850;"
+
+        return "color: #f8fafc; font-weight: 700;"
+
+    def color_action(value):
+        value = str(value).upper()
+
+        if value == "BUY":
+            return "background-color: #047857; color: #ffffff; font-weight: 850;"
+        if value == "SELL":
+            return "background-color: #b91c1c; color: #ffffff; font-weight: 850;"
+        if value == "WATCH":
+            return "background-color: #92400e; color: #ffffff; font-weight: 850;"
+
+        return "color: #f8fafc; font-weight: 700;"
+
+    def color_direction(value):
+        value = str(value).upper()
+
+        if value == "UP":
+            return "background-color: #bbf7d0; color: #052e16; font-weight: 850;"
+        if value == "DOWN":
+            return "background-color: #fecaca; color: #450a0a; font-weight: 850;"
+        if value == "NEUTRAL":
+            return "background-color: #d1d5db; color: #111827; font-weight: 850;"
+
+        return "color: #f8fafc; font-weight: 700;"
+
+    def color_move(value):
+        try:
+            if value > 0:
+                return "color: #34d399; font-weight: 850;"
+            if value < 0:
+                return "color: #f87171; font-weight: 850;"
+        except Exception:
+            pass
+
+        return "color: #e5e7eb; font-weight: 700;"
+
+    styled = df.style.format(format_map, na_rep="")
+
+    for col in ["Prediction True During Week", "Current Correct"]:
+        if col in df.columns:
+            styled = styled.map(color_yes_no, subset=[col])
+
+    if "Action" in df.columns:
+        styled = styled.map(color_action, subset=["Action"])
+
+    if "Predicted Direction" in df.columns:
+        styled = styled.map(color_direction, subset=["Predicted Direction"])
+
+    for col in ["Current Move %", "Best True Move %", "Worst Against Move %"]:
+        if col in df.columns:
+            styled = styled.map(color_move, subset=[col])
+
+    return styled
+
 def filter_chart_range(chart_df: pd.DataFrame, selected_range: str) -> pd.DataFrame:
     if chart_df.empty:
         return chart_df
@@ -1078,6 +1365,8 @@ with tab_dashboard:
         price_df = fetch_prices(tickers, monday_date)
         tracker_df = add_tracking_columns(model_df, price_df)
         portfolio_chart_df = fetch_position_return_series(model_rows, monday_date)
+        weekly_path_price_df = fetch_week_price_paths(tickers, monday_date)
+        weekly_path_tracker_df = build_weekly_price_tracker(tracker_df, weekly_path_price_df)
 
     active_valid = tracker_df[
         (tracker_df["Action"].isin(["BUY", "SELL"]))
@@ -1152,7 +1441,43 @@ with tab_dashboard:
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-    st.subheader("Position details")
+    st.subheader("Weekly price-path tracker")
+    st.caption(
+        "Checks every intraday price this week. For UP calls, it shows when the stock first traded above Monday's price and its best high. "
+        "For DOWN calls, it shows when the stock first traded below Monday's price and its best low. "
+        "This tells you whether the prediction became true at any point during the week, not only right now."
+    )
+
+    if weekly_path_tracker_df.empty:
+        st.info("No weekly price-path data available yet.")
+    else:
+        path_filter = st.radio(
+            "Show",
+            ["All stocks", "True during week", "False during week"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="weekly_path_filter",
+        )
+
+        display_path_df = weekly_path_tracker_df.copy()
+
+        if path_filter == "True during week":
+            display_path_df = display_path_df[
+                display_path_df["Prediction True During Week"] == "YES"
+            ]
+
+        elif path_filter == "False during week":
+            display_path_df = display_path_df[
+                display_path_df["Prediction True During Week"] == "NO"
+            ]
+
+        st.dataframe(
+            style_weekly_path_tracker(display_path_df),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.subheader("Position details")
     st.caption(
         "Assumes 1 share bought for each BUY/UP call and 1 share shorted for each SELL/DOWN call at Monday's reference price."
     )
