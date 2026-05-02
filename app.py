@@ -19,8 +19,13 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    html, body, [class*="css"] {
-        color: #111827 !important;
+    [data-testid="stAppViewContainer"], .stApp, html, body {
+        background: #020817 !important;
+        color: #e5e7eb !important;
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(2, 8, 23, 0.95) !important;
     }
 
     .block-container {
@@ -29,12 +34,26 @@ st.markdown(
         max-width: 1300px;
     }
 
+    h1, h2, h3, h4, h5, h6 {
+        color: #f8fafc !important;
+    }
+
+    p, label, small, .stCaption, [data-testid="stCaptionContainer"] {
+        color: #cbd5e1 !important;
+    }
+
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] span {
+        color: #cbd5e1 !important;
+    }
+
     .chart-wrap {
-        background: #ffffff;
-        border: 1px solid #d1d5db;
+        background: #0f172a;
+        border: 1px solid #334155;
         border-radius: 24px;
         padding: 20px 20px 12px 20px;
-        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.30);
         margin-bottom: 24px;
     }
 
@@ -50,33 +69,33 @@ st.markdown(
         font-size: 36px;
         font-weight: 850;
         letter-spacing: -1.1px;
-        color: #111827;
+        color: #f8fafc;
         line-height: 1;
         margin-bottom: 6px;
     }
 
     .chart-change-green {
-        color: #047857;
+        color: #34d399;
         font-size: 15px;
         font-weight: 850;
     }
 
     .chart-change-red {
-        color: #b91c1c;
+        color: #f87171;
         font-size: 15px;
         font-weight: 850;
     }
 
     .chart-small-note {
-        color: #374151;
+        color: #cbd5e1;
         font-size: 13px;
         font-weight: 750;
         text-align: right;
     }
 
     div[role="radiogroup"] {
-        background: #f3f4f6;
-        border: 1px solid #d1d5db;
+        background: #111827;
+        border: 1px solid #334155;
         padding: 4px;
         border-radius: 999px;
         width: fit-content;
@@ -86,37 +105,72 @@ st.markdown(
     div[role="radiogroup"] label {
         padding: 4px 10px;
         border-radius: 999px;
-        color: #111827 !important;
+        color: #cbd5e1 !important;
         font-weight: 800;
     }
 
     div[role="radiogroup"] label:has(input:checked) {
-        background: #ffffff;
-        color: #047857 !important;
-        box-shadow: 0 1px 5px rgba(17, 24, 39, 0.18);
-    }
-
-    .stCaption, [data-testid="stCaptionContainer"] {
-        color: #374151 !important;
-        font-weight: 600;
+        background: #1f2937;
+        color: #f8fafc !important;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
     }
 
     [data-testid="stMetricLabel"] {
-        color: #374151 !important;
+        color: #cbd5e1 !important;
         font-weight: 750 !important;
     }
 
     [data-testid="stMetricValue"] {
-        color: #111827 !important;
+        color: #f8fafc !important;
         font-weight: 850 !important;
     }
 
     [data-testid="stMetricDelta"] {
+        color: #e5e7eb !important;
         font-weight: 800 !important;
     }
 
+    [data-baseweb="tab-list"] button {
+        color: #cbd5e1 !important;
+    }
+
+    [data-baseweb="tab-list"] button[aria-selected="true"] {
+        color: #f8fafc !important;
+    }
+
+    [data-baseweb="select"] > div,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"] input {
+        background: #111827 !important;
+        color: #f8fafc !important;
+        border-color: #475569 !important;
+    }
+
+    [data-testid="stSelectbox"] label,
+    [data-testid="stNumberInput"] label,
+    [data-testid="stTextArea"] label,
+    [data-testid="stTextInput"] label {
+        color: #e5e7eb !important;
+        font-weight: 700 !important;
+    }
+
+    .stDownloadButton button,
+    .stButton button {
+        background: #111827 !important;
+        color: #f8fafc !important;
+        border: 1px solid #475569 !important;
+    }
+
+    .stDownloadButton button:hover,
+    .stButton button:hover {
+        background: #1f2937 !important;
+        color: #ffffff !important;
+        border-color: #64748b !important;
+    }
+
     div[data-testid="stDataFrame"] {
-        border: 1px solid #d1d5db;
+        border: 1px solid #334155;
         border-radius: 14px;
         overflow: hidden;
     }
@@ -730,7 +784,7 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     format=time_format,
                     tickCount=tick_count,
                     grid=False,
-                    labelColor="#374151",
+                    labelColor="#cbd5e1",
                     labelFontSize=12,
                 ),
             ),
@@ -740,8 +794,8 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                 scale=alt.Scale(zero=False),
                 axis=alt.Axis(
                     grid=True,
-                    gridColor="#dbe3ee",
-                    labelColor="#374151",
+                    gridColor="#334155",
+                    labelColor="#cbd5e1",
                     labelFontSize=12,
                 ),
             ),
@@ -764,7 +818,7 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
                     orient="top",
                     direction="horizontal",
                     labelFontSize=13,
-                    labelColor="#111827",
+                    labelColor="#e5e7eb",
                     symbolSize=140,
                 ),
             ),
@@ -780,7 +834,7 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
     zero_line = (
         alt.Chart(pd.DataFrame({"Return %": [0]}))
         .mark_rule(
-            color="#6b7280",
+            color="#64748b",
             strokeDash=[5, 5],
             strokeWidth=1.5,
         )
@@ -794,8 +848,8 @@ def make_portfolio_chart(filtered_chart_df: pd.DataFrame, chart_range: str):
     ).configure_axis(
         domain=False,
         ticks=False,
-        labelColor="#111827",
-        titleColor="#111827",
+        labelColor="#e5e7eb",
+        titleColor="#e5e7eb",
     )
 
     return chart, latest_return, (first_time, last_time)
