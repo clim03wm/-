@@ -665,6 +665,8 @@ def build_weekly_truth_summary(path_tracker_df: pd.DataFrame) -> dict:
             "false_count": 0,
             "true_pct": 0.0,
             "best_correct_pnl": 0.0,
+            "wrong_final_pnl": 0.0,
+            "perfect_exit_minus_wrong_pnl": 0.0,
             "final_pnl": 0.0,
         }
 
@@ -679,15 +681,30 @@ def build_weekly_truth_summary(path_tracker_df: pd.DataFrame) -> dict:
             "false_count": 0,
             "true_pct": 0.0,
             "best_correct_pnl": 0.0,
+            "wrong_final_pnl": 0.0,
+            "perfect_exit_minus_wrong_pnl": 0.0,
             "final_pnl": 0.0,
         }
 
-    true_count = int((valid["Prediction True During Week"] == "YES").sum())
-    false_count = int((valid["Prediction True During Week"] == "NO").sum())
+    true_mask = valid["Prediction True During Week"] == "YES"
+    false_mask = valid["Prediction True During Week"] == "NO"
+
+    true_count = int(true_mask.sum())
+    false_count = int(false_mask.sum())
     total = int(len(valid))
     true_pct = true_count / total * 100 if total else 0.0
 
-    best_correct_pnl = float(valid["1-Share Best Correct P/L"].fillna(0).sum())
+    # Correct stocks: assume you sold/covered 1 share at the best correct price.
+    best_correct_pnl = float(valid.loc[true_mask, "1-Share Best Correct P/L"].fillna(0).sum())
+
+    # Wrong stocks: they were never correct, so count their latest/final result.
+    wrong_final_pnl = float(valid.loc[false_mask, "Final 1-Share P/L"].fillna(0).sum())
+
+    # This is the dashboard number you asked for:
+    # perfect exit when right, minus/add the final result when wrong.
+    perfect_exit_minus_wrong_pnl = best_correct_pnl + wrong_final_pnl
+
+    # This is just the simple held-to-now result for comparison.
     final_pnl = float(valid["Final 1-Share P/L"].fillna(0).sum())
 
     return {
@@ -696,9 +713,10 @@ def build_weekly_truth_summary(path_tracker_df: pd.DataFrame) -> dict:
         "false_count": false_count,
         "true_pct": true_pct,
         "best_correct_pnl": best_correct_pnl,
+        "wrong_final_pnl": wrong_final_pnl,
+        "perfect_exit_minus_wrong_pnl": perfect_exit_minus_wrong_pnl,
         "final_pnl": final_pnl,
     }
-
 
 def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFrame:
     if path_tracker_df.empty:
@@ -707,6 +725,8 @@ def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFr
                 "Group",
                 "Stocks",
                 "1-Share Best Correct P/L",
+                "Wrong/Final 1-Share P/L",
+                "Best Exit - Wrong P/L",
                 "Final 1-Share P/L",
             ]
         )
@@ -721,6 +741,8 @@ def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFr
                 "Group",
                 "Stocks",
                 "1-Share Best Correct P/L",
+                "Wrong/Final 1-Share P/L",
+                "Best Exit - Wrong P/L",
                 "Final 1-Share P/L",
             ]
         )
@@ -734,12 +756,21 @@ def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFr
     ]:
         group = valid[mask].copy()
 
+        true_group = group[group["Prediction True During Week"] == "YES"]
+        false_group = group[group["Prediction True During Week"] == "NO"]
+
+        best_correct = float(true_group["1-Share Best Correct P/L"].fillna(0).sum())
+        wrong_final = float(false_group["Final 1-Share P/L"].fillna(0).sum())
+        final_total = float(group["Final 1-Share P/L"].fillna(0).sum())
+
         rows.append(
             {
                 "Group": group_name,
                 "Stocks": int(len(group)),
-                "1-Share Best Correct P/L": float(group["1-Share Best Correct P/L"].fillna(0).sum()),
-                "Final 1-Share P/L": float(group["Final 1-Share P/L"].fillna(0).sum()),
+                "1-Share Best Correct P/L": best_correct,
+                "Wrong/Final 1-Share P/L": wrong_final,
+                "Best Exit - Wrong P/L": best_correct + wrong_final,
+                "Final 1-Share P/L": final_total,
             }
         )
 
@@ -1347,6 +1378,8 @@ def style_money(df: pd.DataFrame):
         "Current Position Value",
         "1-Share Best Correct P/L",
         "Final 1-Share P/L",
+        "Wrong/Final 1-Share P/L",
+        "Best Exit - Wrong P/L",
         "Final Price Used",
     ]:
         if col in df.columns:
@@ -1484,11 +1517,38 @@ with tab_dashboard:
         combined_pnl = 0.0
         combined_return = 0.0
 
+    weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active calls", active_total)
-    c2.metric("Active correct", active_correct)
-    c3.metric("Active accuracy", f"{active_accuracy:.1f}%")
-    c4.metric("1-share P/L", f"${combined_pnl:,.2f}", f"{combined_return:.2f}%")
+    c2.metric("Active correct now", active_correct)
+    c3.metric(
+        "True during week",
+        f"{weekly_truth_summary['true_count']} / {weekly_truth_summary['total']}",
+    )
+    c4.metric("True during week %", f"{weekly_truth_summary['true_pct']:.1f}%")
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric(
+        "Best exit P/L",
+        f"${weekly_truth_summary['best_correct_pnl']:,.2f}",
+        "Correct calls only",
+    )
+    c6.metric(
+        "Wrong final P/L",
+        f"${weekly_truth_summary['wrong_final_pnl']:,.2f}",
+        "Never-correct calls",
+    )
+    c7.metric(
+        "Best exit - wrong",
+        f"${weekly_truth_summary['perfect_exit_minus_wrong_pnl']:,.2f}",
+        "Sell/cover at best if right",
+    )
+    c8.metric(
+        "Held-to-now P/L",
+        f"${weekly_truth_summary['final_pnl']:,.2f}",
+        "Latest price result",
+    )
 
     st.subheader("Portfolio performance")
 
