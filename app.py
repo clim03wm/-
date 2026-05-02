@@ -1456,6 +1456,229 @@ def style_money(df: pd.DataFrame):
     return styled
 
 
+
+def build_excel_download(
+    tracker_df: pd.DataFrame,
+    weekly_path_tracker_df: pd.DataFrame,
+    weekly_group_summary_df: pd.DataFrame,
+    accuracy_action_df: pd.DataFrame,
+    accuracy_direction_df: pd.DataFrame,
+    monday_date: date,
+) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+
+    weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+
+    dashboard_summary_df = pd.DataFrame(
+        [
+            ["Reference Monday", monday_date.isoformat()],
+            ["Stocks checked", weekly_truth_summary["total"]],
+            ["True during week", weekly_truth_summary["true_count"]],
+            ["False during week", weekly_truth_summary["false_count"]],
+            ["True during week %", weekly_truth_summary["true_pct"] / 100],
+            ["Best exit P/L", weekly_truth_summary["best_correct_pnl"]],
+            ["Wrong final P/L", weekly_truth_summary["wrong_final_pnl"]],
+            ["Best exit - wrong P/L", weekly_truth_summary["perfect_exit_minus_wrong_pnl"]],
+            ["Held-to-now P/L", weekly_truth_summary["final_pnl"]],
+        ],
+        columns=["Metric", "Value"],
+    )
+
+    export_weekly_df = weekly_path_tracker_df.copy()
+
+    for col in ["First Correct Time", "Best Correct Time"]:
+        if col in export_weekly_df.columns:
+            export_weekly_df[col] = pd.to_datetime(export_weekly_df[col], errors="coerce")
+            export_weekly_df[col] = export_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
+
+    sheet_data = {
+        "Dashboard Summary": dashboard_summary_df,
+        "Weekly Truth Summary": weekly_group_summary_df,
+        "Weekly Price Tracker": export_weekly_df,
+        "Tracker": tracker_df,
+        "Accuracy by Action": accuracy_action_df,
+        "Accuracy by Direction": accuracy_direction_df,
+    }
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    header_fill = PatternFill("solid", fgColor="111827")
+    header_font = Font(color="FFFFFF", bold=True)
+    normal_font = Font(color="111827")
+    white_font = Font(color="FFFFFF", bold=True)
+
+    green_fill = PatternFill("solid", fgColor="047857")
+    red_fill = PatternFill("solid", fgColor="B91C1C")
+    orange_fill = PatternFill("solid", fgColor="92400E")
+    gray_fill = PatternFill("solid", fgColor="D1D5DB")
+    dark_gray_fill = PatternFill("solid", fgColor="374151")
+    blue_fill = PatternFill("solid", fgColor="1E3A8A")
+    purple_fill = PatternFill("solid", fgColor="581C87")
+    up_fill = PatternFill("solid", fgColor="BBF7D0")
+    down_fill = PatternFill("solid", fgColor="FECACA")
+
+    border = Border(
+        left=Side(style="thin", color="D1D5DB"),
+        right=Side(style="thin", color="D1D5DB"),
+        top=Side(style="thin", color="D1D5DB"),
+        bottom=Side(style="thin", color="D1D5DB"),
+    )
+
+    money_cols = {
+        "Monday Price",
+        "Best Correct Price",
+        "1-Share Best Correct P/L",
+        "Final Price Used",
+        "Final 1-Share P/L",
+        "Monday Reference Price",
+        "Current Price",
+        "Dollar P/L",
+        "Monday Entry Value",
+        "Current Position Value",
+        "Best Exit - Wrong P/L",
+        "Wrong/Final 1-Share P/L",
+    }
+
+    percent_cols = {
+        "Best Correct Move %",
+        "Final Move %",
+        "Change Since Monday %",
+        "Expected Move %",
+        "Accuracy %",
+        "Avg Change Since Monday %",
+        "Percent Return",
+    }
+
+    def safe_value(value):
+        if pd.isna(value):
+            return ""
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        return value
+
+    def apply_colors(cell, col_name, value):
+        value_str = str(value).upper()
+
+        if col_name in ["Prediction True During Week", "Correct So Far", "Current Correct"]:
+            if value_str == "YES":
+                cell.fill = green_fill
+                cell.font = white_font
+            elif value_str == "NO":
+                cell.fill = red_fill
+                cell.font = white_font
+            elif value_str == "N/A":
+                cell.fill = dark_gray_fill
+                cell.font = white_font
+
+        if col_name == "Action":
+            if value_str == "BUY":
+                cell.fill = green_fill
+                cell.font = white_font
+            elif value_str == "SELL":
+                cell.fill = red_fill
+                cell.font = white_font
+            elif value_str == "WATCH":
+                cell.fill = orange_fill
+                cell.font = white_font
+
+        if col_name in ["Predicted Direction", "Direction", "Actual Direction So Far"]:
+            if value_str == "UP":
+                cell.fill = up_fill
+                cell.font = Font(color="052E16", bold=True)
+            elif value_str == "DOWN":
+                cell.fill = down_fill
+                cell.font = Font(color="450A0A", bold=True)
+            elif value_str == "NEUTRAL":
+                cell.fill = gray_fill
+                cell.font = Font(color="111827", bold=True)
+
+        if col_name == "Edge":
+            if value_str == "STRONG":
+                cell.fill = blue_fill
+                cell.font = white_font
+            elif value_str == "MODERATE":
+                cell.fill = orange_fill
+                cell.font = white_font
+            elif value_str == "WEAK":
+                cell.fill = dark_gray_fill
+                cell.font = white_font
+
+        if col_name == "Regime":
+            if value_str == "EVENTFUL":
+                cell.fill = purple_fill
+                cell.font = white_font
+            elif value_str == "NORMAL":
+                cell.fill = gray_fill
+                cell.font = Font(color="111827", bold=True)
+
+        if col_name in money_cols or col_name in percent_cols:
+            try:
+                num = float(value)
+                if num > 0:
+                    cell.font = Font(color="047857", bold=True)
+                elif num < 0:
+                    cell.font = Font(color="B91C1C", bold=True)
+            except Exception:
+                pass
+
+    for sheet_name, df_out in sheet_data.items():
+        df_out = df_out.copy()
+        ws = wb.create_sheet(title=sheet_name[:31])
+
+        for col_idx, col_name in enumerate(df_out.columns, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for row_idx, (_, row) in enumerate(df_out.iterrows(), start=2):
+            for col_idx, col_name in enumerate(df_out.columns, start=1):
+                value = safe_value(row[col_name])
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.border = border
+                cell.font = normal_font
+                cell.alignment = Alignment(vertical="center")
+                apply_colors(cell, col_name, value)
+
+                if col_name in money_cols and isinstance(value, (int, float)):
+                    cell.number_format = '$#,##0.00;[Red]-$#,##0.00'
+                elif col_name in percent_cols and isinstance(value, (int, float)):
+                    cell.number_format = '0.00"%"'
+
+        if sheet_name == "Dashboard Summary":
+            for row_idx in range(2, ws.max_row + 1):
+                metric = ws.cell(row=row_idx, column=1).value
+                if metric == "True during week %":
+                    ws.cell(row=row_idx, column=2).number_format = "0.00%"
+                if metric in [
+                    "Best exit P/L",
+                    "Wrong final P/L",
+                    "Best exit - wrong P/L",
+                    "Held-to-now P/L",
+                ]:
+                    ws.cell(row=row_idx, column=2).number_format = '$#,##0.00;[Red]-$#,##0.00'
+
+        ws.freeze_panes = "A2"
+        if ws.max_column > 0 and ws.max_row > 1:
+            ws.auto_filter.ref = ws.dimensions
+
+        for col_idx, col_name in enumerate(df_out.columns, start=1):
+            values = [str(col_name)]
+            for row_idx in range(2, min(ws.max_row, 200) + 1):
+                values.append(str(ws.cell(row=row_idx, column=col_idx).value or ""))
+            width = min(max(max(len(v) for v in values) + 2, 12), 36)
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+
 st.title("Manual Weekly Stock Signal Tracker")
 st.caption("Tracks this week's model output against this week's Monday reference price, not daily percent change.")
 
