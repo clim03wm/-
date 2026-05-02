@@ -1559,6 +1559,8 @@ with tab_dashboard:
 
         st.subheader("Weekly truth summary")
 
+        weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
+
         st.dataframe(
             style_money(weekly_group_summary_df),
             use_container_width=True,
