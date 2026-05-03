@@ -783,19 +783,25 @@ def fetch_etf_best_exit_comparison(
     etfs: tuple[tuple[str, str], ...],
     monday_date: date,
     comparison_capital: float,
-    model_best_exit_minus_wrong_pnl: float,
+    model_best_sell_pnl: float,
 ) -> pd.DataFrame:
     """
-    Compares the model's best-exit result against famous ETFs.
+    Compares the model's best-sell result against famous ETFs.
 
     ETF logic:
       - Buy ETF at this week's Monday reference price.
-      - Sell at the best intraday close available so far this week.
-      - Also shows what the ETF profit would be using the same entry capital as the active model calls.
+      - Sell at the ETF's best intraday close available so far this week.
+      - Compare that best weekly ETF profit margin with the model's best-sell profit margin.
     """
     rows = []
     start_date = monday_date
     end_date = datetime.now().date() + timedelta(days=1)
+
+    model_best_sell_margin_pct = (
+        model_best_sell_pnl / comparison_capital * 100
+        if comparison_capital
+        else None
+    )
 
     for ticker, name in etfs:
         symbol = yahoo_symbol(ticker)
@@ -806,14 +812,16 @@ def fetch_etf_best_exit_comparison(
             "Monday Price": None,
             "Best Sell Time": None,
             "Best Sell Price": None,
-            "Best Sell Move %": None,
-            "1-Share Best ETF P/L": None,
+            "ETF Best Weekly Profit %": None,
+            "1-Share ETF Best Profit": None,
             "Comparison Capital": comparison_capital if comparison_capital else None,
-            "Equal-Capital ETF P/L": None,
-            "Model Best Exit - Wrong P/L": model_best_exit_minus_wrong_pnl,
-            "Difference vs Model": None,
+            "ETF Best Profit on Same Capital": None,
+            "Model Best Sell Profit": model_best_sell_pnl,
+            "Model Best Sell Profit %": model_best_sell_margin_pct,
+            "ETF % Difference vs Model": None,
+            "ETF $ Difference vs Model": None,
             "Current ETF Price": None,
-            "Held-To-Now ETF P/L": None,
+            "ETF Held-To-Now Profit": None,
             "Price Error": "",
         }
 
@@ -867,27 +875,33 @@ def fetch_etf_best_exit_comparison(
             current_price = float(path["close"].iloc[-1])
 
             one_share_best_pnl = best_price - monday_price
-            best_move_pct = one_share_best_pnl / monday_price * 100 if monday_price else 0.0
+            etf_best_profit_pct = one_share_best_pnl / monday_price * 100 if monday_price else 0.0
             held_pnl = current_price - monday_price
 
             if comparison_capital and monday_price:
-                equal_capital_pnl = (comparison_capital / monday_price) * one_share_best_pnl
-                difference_vs_model = equal_capital_pnl - model_best_exit_minus_wrong_pnl
+                etf_same_capital_pnl = (comparison_capital / monday_price) * one_share_best_pnl
+                etf_dollar_difference = etf_same_capital_pnl - model_best_sell_pnl
             else:
-                equal_capital_pnl = None
-                difference_vs_model = None
+                etf_same_capital_pnl = None
+                etf_dollar_difference = None
+
+            if model_best_sell_margin_pct is not None:
+                etf_pct_difference = etf_best_profit_pct - model_best_sell_margin_pct
+            else:
+                etf_pct_difference = None
 
             base.update(
                 {
                     "Monday Price": monday_price,
                     "Best Sell Time": best_idx,
                     "Best Sell Price": best_price,
-                    "Best Sell Move %": best_move_pct,
-                    "1-Share Best ETF P/L": one_share_best_pnl,
-                    "Equal-Capital ETF P/L": equal_capital_pnl,
-                    "Difference vs Model": difference_vs_model,
+                    "ETF Best Weekly Profit %": etf_best_profit_pct,
+                    "1-Share ETF Best Profit": one_share_best_pnl,
+                    "ETF Best Profit on Same Capital": etf_same_capital_pnl,
+                    "ETF % Difference vs Model": etf_pct_difference,
+                    "ETF $ Difference vs Model": etf_dollar_difference,
                     "Current ETF Price": current_price,
-                    "Held-To-Now ETF P/L": held_pnl,
+                    "ETF Held-To-Now Profit": held_pnl,
                 }
             )
 
@@ -1504,13 +1518,13 @@ def style_money(df: pd.DataFrame):
         "Best Exit - Wrong P/L",
         "Final Price Used",
         "Best Sell Price",
-        "1-Share Best ETF P/L",
-        "Equal-Capital ETF P/L",
-        "Model Best Exit - Wrong P/L",
-        "Difference vs Model",
+        "1-Share ETF Best Profit",
+        "ETF Best Profit on Same Capital",
+        "Model Best Sell Profit",
+        "ETF $ Difference vs Model",
         "Comparison Capital",
         "Current ETF Price",
-        "Held-To-Now ETF P/L",
+        "ETF Held-To-Now Profit",
     ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
@@ -1521,7 +1535,9 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
-        "Best Sell Move %",
+        "ETF Best Weekly Profit %",
+        "Model Best Sell Profit %",
+        "ETF % Difference vs Model",
     ]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
@@ -1573,12 +1589,14 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
-        "Best Sell Move %",
-        "1-Share Best ETF P/L",
-        "Equal-Capital ETF P/L",
-        "Model Best Exit - Wrong P/L",
-        "Difference vs Model",
-        "Held-To-Now ETF P/L",
+        "ETF Best Weekly Profit %",
+        "Model Best Sell Profit %",
+        "ETF % Difference vs Model",
+        "1-Share ETF Best Profit",
+        "ETF Best Profit on Same Capital",
+        "Model Best Sell Profit",
+        "ETF $ Difference vs Model",
+        "ETF Held-To-Now Profit",
     ]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
@@ -1697,7 +1715,7 @@ def build_excel_download(
         "Dashboard Summary": dashboard_summary_df,
         "Weekly Truth Summary": weekly_group_summary_df,
         "Weekly Price Tracker": export_weekly_df,
-        "ETF Best Exit Comparison": export_etf_df,
+        "ETF Best Profit Comparison": export_etf_df,
         "Tracker": tracker_df,
     }
 
@@ -1742,13 +1760,13 @@ def build_excel_download(
         "Best Exit 1-Share P/L",
         "Held-To-Now 1-Share P/L",
         "Best Sell Price",
-        "1-Share Best ETF P/L",
-        "Equal-Capital ETF P/L",
-        "Model Best Exit - Wrong P/L",
-        "Difference vs Model",
+        "1-Share ETF Best Profit",
+        "ETF Best Profit on Same Capital",
+        "Model Best Sell Profit",
+        "ETF $ Difference vs Model",
         "Comparison Capital",
         "Current ETF Price",
-        "Held-To-Now ETF P/L",
+        "ETF Held-To-Now Profit",
     }
 
     percent_cols = {
@@ -1760,7 +1778,9 @@ def build_excel_download(
         "Avg Change Since Monday %",
         "Percent Return",
         "Current Move Since Monday %",
-        "Best Sell Move %",
+        "ETF Best Weekly Profit %",
+        "Model Best Sell Profit %",
+        "ETF % Difference vs Model",
     }
 
     def safe_value(value):
@@ -2114,36 +2134,6 @@ with tab_dashboard:
                 hide_index=True,
             )
 
-        st.subheader("Position details")
-    st.caption(
-        "Assumes 1 share bought for each BUY/UP call and 1 share shorted for each SELL/DOWN call at Monday's reference price."
-    )
-
-    detail_buy, detail_sell, detail_combined = st.tabs(
-        ["BUY/UP positions", "SELL/DOWN short positions", "Combined active positions"]
-    )
-
-    with detail_buy:
-        st.dataframe(
-            style_money(build_what_if_positions(tracker_df, "BUY")),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    with detail_sell:
-        st.dataframe(
-            style_money(build_what_if_positions(tracker_df, "SELL")),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    with detail_combined:
-        st.dataframe(
-            style_money(build_what_if_positions(tracker_df, "COMBINED")),
-            use_container_width=True,
-            hide_index=True,
-        )
-
     st.subheader("Robinhood bearish trade calculators")
     st.caption(
         "For SELL/DOWN calls. The paper short calculator shows classic short math. "
@@ -2290,24 +2280,17 @@ with tab_dashboard:
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
-    st.subheader("ETF best-exit comparison")
+    st.subheader("ETF best weekly profit comparison")
     st.caption(
-        "Benchmarks famous ETFs from the same Monday reference point. "
-        "ETF best exit means buying the ETF on Monday and selling at its best intraday close so far this week. "
-        "Equal-capital ETF P/L uses the same Monday entry value as the model's active BUY/UP and SELL/DOWN calls."
+        "Compares SPY, QQQ, and DIA against the model's best-sell result. "
+        "Each ETF is bought at Monday's reference price and sold at its best intraday close so far this week. "
+        "The percentage columns compare profit margin; the dollar columns use the same Monday entry value as the model's active calls."
     )
 
     famous_etfs = (
-        ("SPY", "S&P 500"),
-        ("QQQ", "Nasdaq 100"),
-        ("DIA", "Dow Jones Industrial Average"),
-        ("IWM", "Russell 2000"),
-        ("VTI", "Total U.S. Market"),
-        ("XLK", "Technology Sector"),
-        ("XLF", "Financial Sector"),
-        ("XLE", "Energy Sector"),
-        ("GLD", "Gold"),
-        ("SLV", "Silver"),
+        ("SPY", "S&P 500 ETF"),
+        ("QQQ", "Nasdaq 100 ETF"),
+        ("DIA", "Dow Jones Industrial Average ETF"),
     )
 
     comparison_capital = (
@@ -2320,7 +2303,7 @@ with tab_dashboard:
         famous_etfs,
         monday_date,
         comparison_capital,
-        weekly_truth_summary["perfect_exit_minus_wrong_pnl"],
+        weekly_truth_summary["best_correct_pnl"],
     )
 
     st.dataframe(
