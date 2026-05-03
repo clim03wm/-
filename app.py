@@ -777,6 +777,127 @@ def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFr
 
     return pd.DataFrame(rows)
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_etf_best_exit_comparison(
+    etfs: tuple[tuple[str, str], ...],
+    monday_date: date,
+    comparison_capital: float,
+    model_best_exit_minus_wrong_pnl: float,
+) -> pd.DataFrame:
+    """
+    Compares the model's best-exit result against famous ETFs.
+
+    ETF logic:
+      - Buy ETF at this week's Monday reference price.
+      - Sell at the best intraday close available so far this week.
+      - Also shows what the ETF profit would be using the same entry capital as the active model calls.
+    """
+    rows = []
+    start_date = monday_date
+    end_date = datetime.now().date() + timedelta(days=1)
+
+    for ticker, name in etfs:
+        symbol = yahoo_symbol(ticker)
+
+        base = {
+            "ETF": ticker,
+            "Name": name,
+            "Monday Price": None,
+            "Best Sell Time": None,
+            "Best Sell Price": None,
+            "Best Sell Move %": None,
+            "1-Share Best ETF P/L": None,
+            "Comparison Capital": comparison_capital if comparison_capital else None,
+            "Equal-Capital ETF P/L": None,
+            "Model Best Exit - Wrong P/L": model_best_exit_minus_wrong_pnl,
+            "Difference vs Model": None,
+            "Current ETF Price": None,
+            "Held-To-Now ETF P/L": None,
+            "Price Error": "",
+        }
+
+        try:
+            df = yf.download(
+                symbol,
+                start=start_date.isoformat(),
+                end=end_date.isoformat(),
+                interval="30m",
+                auto_adjust=True,
+                progress=False,
+                prepost=False,
+                threads=False,
+            )
+
+            if df is None or df.empty:
+                rows.append(base)
+                continue
+
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [c[0] for c in df.columns]
+
+            df = df.rename(columns=str.lower)
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+
+            if "close" not in df.columns or df["close"].dropna().empty:
+                rows.append(base)
+                continue
+
+            path = df[["close"]].dropna().copy()
+            monday_rows = path[path.index.date == monday_date]
+
+            if monday_rows.empty:
+                rows.append(base)
+                continue
+
+            window_start = datetime.combine(monday_date, time(11, 30))
+            window_end = datetime.combine(monday_date, time(12, 30))
+            noon_window = monday_rows[
+                (monday_rows.index >= window_start)
+                & (monday_rows.index <= window_end)
+            ]
+
+            if not noon_window.empty:
+                monday_price = float(noon_window["close"].mean())
+            else:
+                monday_price = float(monday_rows["close"].iloc[0])
+
+            best_idx = path["close"].idxmax()
+            best_price = float(path.loc[best_idx, "close"])
+            current_price = float(path["close"].iloc[-1])
+
+            one_share_best_pnl = best_price - monday_price
+            best_move_pct = one_share_best_pnl / monday_price * 100 if monday_price else 0.0
+            held_pnl = current_price - monday_price
+
+            if comparison_capital and monday_price:
+                equal_capital_pnl = (comparison_capital / monday_price) * one_share_best_pnl
+                difference_vs_model = equal_capital_pnl - model_best_exit_minus_wrong_pnl
+            else:
+                equal_capital_pnl = None
+                difference_vs_model = None
+
+            base.update(
+                {
+                    "Monday Price": monday_price,
+                    "Best Sell Time": best_idx,
+                    "Best Sell Price": best_price,
+                    "Best Sell Move %": best_move_pct,
+                    "1-Share Best ETF P/L": one_share_best_pnl,
+                    "Equal-Capital ETF P/L": equal_capital_pnl,
+                    "Difference vs Model": difference_vs_model,
+                    "Current ETF Price": current_price,
+                    "Held-To-Now ETF P/L": held_pnl,
+                }
+            )
+
+        except Exception as exc:
+            base["Price Error"] = str(exc)
+
+        rows.append(base)
+
+    return pd.DataFrame(rows)
+
 def style_weekly_path_tracker(df: pd.DataFrame):
     format_map = {
         "Monday Price": "${:,.2f}",
@@ -1382,6 +1503,14 @@ def style_money(df: pd.DataFrame):
         "Wrong/Final 1-Share P/L",
         "Best Exit - Wrong P/L",
         "Final Price Used",
+        "Best Sell Price",
+        "1-Share Best ETF P/L",
+        "Equal-Capital ETF P/L",
+        "Model Best Exit - Wrong P/L",
+        "Difference vs Model",
+        "Comparison Capital",
+        "Current ETF Price",
+        "Held-To-Now ETF P/L",
     ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
@@ -1392,6 +1521,7 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
+        "Best Sell Move %",
     ]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
@@ -1443,6 +1573,12 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
+        "Best Sell Move %",
+        "1-Share Best ETF P/L",
+        "Equal-Capital ETF P/L",
+        "Model Best Exit - Wrong P/L",
+        "Difference vs Model",
+        "Held-To-Now ETF P/L",
     ]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
@@ -1461,8 +1597,7 @@ def build_excel_download(
     tracker_df: pd.DataFrame,
     weekly_path_tracker_df: pd.DataFrame,
     weekly_group_summary_df: pd.DataFrame,
-    accuracy_action_df: pd.DataFrame,
-    accuracy_direction_df: pd.DataFrame,
+    etf_comparison_df: pd.DataFrame,
     monday_date: date,
 ) -> bytes:
     from openpyxl import Workbook
@@ -1552,14 +1687,18 @@ def build_excel_download(
     )
 
 
+    export_etf_df = etf_comparison_df.copy()
+    if "Best Sell Time" in export_etf_df.columns:
+        export_etf_df["Best Sell Time"] = pd.to_datetime(export_etf_df["Best Sell Time"], errors="coerce")
+        export_etf_df["Best Sell Time"] = export_etf_df["Best Sell Time"].dt.strftime("%a %I:%M %p").fillna("")
+
     sheet_data = {
         "Full Stock Details": full_detail_df,
         "Dashboard Summary": dashboard_summary_df,
         "Weekly Truth Summary": weekly_group_summary_df,
         "Weekly Price Tracker": export_weekly_df,
+        "ETF Best Exit Comparison": export_etf_df,
         "Tracker": tracker_df,
-        "Accuracy by Action": accuracy_action_df,
-        "Accuracy by Direction": accuracy_direction_df,
     }
 
     wb = Workbook()
@@ -1602,6 +1741,14 @@ def build_excel_download(
         "Wrong/Final 1-Share P/L",
         "Best Exit 1-Share P/L",
         "Held-To-Now 1-Share P/L",
+        "Best Sell Price",
+        "1-Share Best ETF P/L",
+        "Equal-Capital ETF P/L",
+        "Model Best Exit - Wrong P/L",
+        "Difference vs Model",
+        "Comparison Capital",
+        "Current ETF Price",
+        "Held-To-Now ETF P/L",
     }
 
     percent_cols = {
@@ -1613,6 +1760,7 @@ def build_excel_download(
         "Avg Change Since Monday %",
         "Percent Return",
         "Current Move Since Monday %",
+        "Best Sell Move %",
     }
 
     def safe_value(value):
@@ -2142,27 +2290,54 @@ with tab_dashboard:
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Accuracy by action")
-        st.dataframe(style_money(build_summary(tracker_df, "Action")), use_container_width=True, hide_index=True)
+    st.subheader("ETF best-exit comparison")
+    st.caption(
+        "Benchmarks famous ETFs from the same Monday reference point. "
+        "ETF best exit means buying the ETF on Monday and selling at its best intraday close so far this week. "
+        "Equal-capital ETF P/L uses the same Monday entry value as the model's active BUY/UP and SELL/DOWN calls."
+    )
 
-    with col2:
-        st.subheader("Accuracy by direction")
-        st.dataframe(style_money(build_summary(tracker_df, "Direction")), use_container_width=True, hide_index=True)
+    famous_etfs = (
+        ("SPY", "S&P 500"),
+        ("QQQ", "Nasdaq 100"),
+        ("DIA", "Dow Jones Industrial Average"),
+        ("IWM", "Russell 2000"),
+        ("VTI", "Total U.S. Market"),
+        ("XLK", "Technology Sector"),
+        ("XLF", "Financial Sector"),
+        ("XLE", "Energy Sector"),
+        ("GLD", "Gold"),
+        ("SLV", "Silver"),
+    )
+
+    comparison_capital = (
+        float(combined_row["Monday Entry Value"].iloc[0])
+        if not combined_row.empty and pd.notna(combined_row["Monday Entry Value"].iloc[0])
+        else 0.0
+    )
+
+    etf_comparison_df = fetch_etf_best_exit_comparison(
+        famous_etfs,
+        monday_date,
+        comparison_capital,
+        weekly_truth_summary["perfect_exit_minus_wrong_pnl"],
+    )
+
+    st.dataframe(
+        style_money(etf_comparison_df),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.subheader("Download results")
 
     weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
-    accuracy_action_df = build_summary(tracker_df, "Action")
-    accuracy_direction_df = build_summary(tracker_df, "Direction")
 
     excel_bytes = build_excel_download(
         tracker_df=tracker_df,
         weekly_path_tracker_df=weekly_path_tracker_df,
         weekly_group_summary_df=weekly_group_summary_df,
-        accuracy_action_df=accuracy_action_df,
-        accuracy_direction_df=accuracy_direction_df,
+        etf_comparison_df=etf_comparison_df,
         monday_date=monday_date,
     )
 
