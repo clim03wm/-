@@ -2275,12 +2275,6 @@ with tab_dashboard:
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-    st.subheader("Weekly price-path tracker")
-    st.caption(
-        "This checks whether each prediction became true at any point during the week. "
-        "It removes current price from this table and focuses on when the call was correct, the best correct price, and the 1-share profit/loss."
-    )
-
     if weekly_path_tracker_df.empty:
         st.info("No weekly price-path data available yet.")
     else:
