@@ -1615,7 +1615,6 @@ def build_excel_download(
     tracker_df: pd.DataFrame,
     weekly_path_tracker_df: pd.DataFrame,
     weekly_group_summary_df: pd.DataFrame,
-    etf_comparison_df: pd.DataFrame,
     monday_date: date,
 ) -> bytes:
     from openpyxl import Workbook
@@ -1705,17 +1704,11 @@ def build_excel_download(
     )
 
 
-    export_etf_df = etf_comparison_df.copy()
-    if "Best Sell Time" in export_etf_df.columns:
-        export_etf_df["Best Sell Time"] = pd.to_datetime(export_etf_df["Best Sell Time"], errors="coerce")
-        export_etf_df["Best Sell Time"] = export_etf_df["Best Sell Time"].dt.strftime("%a %I:%M %p").fillna("")
-
     sheet_data = {
         "Full Stock Details": full_detail_df,
         "Dashboard Summary": dashboard_summary_df,
         "Weekly Truth Summary": weekly_group_summary_df,
         "Weekly Price Tracker": export_weekly_df,
-        "ETF Best Profit Comparison": export_etf_df,
         "Tracker": tracker_df,
     }
 
@@ -2280,37 +2273,6 @@ with tab_dashboard:
     st.subheader("Tracker")
     st.dataframe(style_tracker(tracker_df), use_container_width=True, hide_index=True)
 
-    st.subheader("ETF best weekly profit comparison")
-    st.caption(
-        "Compares SPY, QQQ, and DIA against the model's best-sell result. "
-        "Each ETF is bought at Monday's reference price and sold at its best intraday close so far this week. "
-        "The percentage columns compare profit margin; the dollar columns use the same Monday entry value as the model's active calls."
-    )
-
-    famous_etfs = (
-        ("SPY", "S&P 500 ETF"),
-        ("QQQ", "Nasdaq 100 ETF"),
-        ("DIA", "Dow Jones Industrial Average ETF"),
-    )
-
-    comparison_capital = (
-        float(combined_row["Monday Entry Value"].iloc[0])
-        if not combined_row.empty and pd.notna(combined_row["Monday Entry Value"].iloc[0])
-        else 0.0
-    )
-
-    etf_comparison_df = fetch_etf_best_exit_comparison(
-        famous_etfs,
-        monday_date,
-        comparison_capital,
-        weekly_truth_summary["best_correct_pnl"],
-    )
-
-    st.dataframe(
-        style_money(etf_comparison_df),
-        use_container_width=True,
-        hide_index=True,
-    )
 
     st.subheader("Download results")
 
@@ -2320,7 +2282,6 @@ with tab_dashboard:
         tracker_df=tracker_df,
         weekly_path_tracker_df=weekly_path_tracker_df,
         weekly_group_summary_df=weekly_group_summary_df,
-        etf_comparison_df=etf_comparison_df,
         monday_date=monday_date,
     )
 
