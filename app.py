@@ -509,27 +509,46 @@ def build_weekly_price_tracker(
     """
     Checks the whole week's intraday path for each stock.
 
-    For UP:
-      - correct if price traded above Monday reference price
-      - best correct price is weekly high
-
-    For DOWN:
-      - correct if price traded below Monday reference price
-      - best correct price is weekly low
-
-    For NEUTRAL:
-      - correct if it stayed within +/- 0.50% of Monday reference price
-      - best correct price is the closest price to Monday reference price
-
-    Money logic:
-      - BUY/UP makes money at best correct price: best price - Monday price
-      - SELL/DOWN makes money at best correct price: Monday price - best price
-      - never-correct stocks get $0 for best-correct P/L
+    Adds cleaner trading-use columns:
+      - first correct exit
+      - best correct exit
+      - missed profit from not selling/covering at the best point
+      - exit timing quality
+      - worst adverse move before the call first became correct
     """
     output_rows = []
 
     if tracker_df.empty:
         return pd.DataFrame()
+
+    def timing_bucket(best_time, first_time, last_time):
+        if pd.isna(best_time) or pd.isna(first_time) or pd.isna(last_time):
+            return "N/A"
+
+        total_seconds = (last_time - first_time).total_seconds()
+        if total_seconds <= 0:
+            return "EARLY"
+
+        pct = (best_time - first_time).total_seconds() / total_seconds
+
+        if pct <= 0.33:
+            return "EARLY"
+        if pct <= 0.66:
+            return "MIDDLE"
+        return "LATE"
+
+    def alert_label(best_pnl, true_flag):
+        if true_flag != "YES":
+            return "Never worked"
+        if pd.isna(best_pnl):
+            return "Never worked"
+        if best_pnl >= 3:
+            return "Great exit"
+        if best_pnl >= 1:
+            return "Good exit"
+        if best_pnl > 0:
+            return "Tiny win"
+        return "Never worked"
 
     for _, row in tracker_df.iterrows():
         ticker = str(row.get("Ticker", "")).upper()
@@ -546,6 +565,9 @@ def build_weekly_price_tracker(
             "Prediction True During Week": "N/A",
             "Monday Price": monday_price,
             "First Correct Time": None,
+            "First Correct Price": None,
+            "First Correct Move %": None,
+            "First Correct 1-Share P/L": 0.0,
             "Best Correct Time": None,
             "Best Correct Price": None,
             "Best Correct Move %": None,
@@ -553,6 +575,13 @@ def build_weekly_price_tracker(
             "Final Price Used": None,
             "Final Move %": None,
             "Final 1-Share P/L": 0.0,
+            "Best vs Held Gap": None,
+            "Exit Timing": "N/A",
+            "Best Exit Alert": "Never worked",
+            "Worst Before Correct Time": None,
+            "Worst Before Correct Price": None,
+            "Worst Before Correct Move %": None,
+            "Worst Before Correct 1-Share P/L": None,
         }
 
         if pd.isna(monday_price) or stock_path.empty:
@@ -563,6 +592,9 @@ def build_weekly_price_tracker(
 
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
         stock_path = stock_path.sort_values("Time")
+
+        path_first_time = stock_path["Time"].min()
+        path_last_time = stock_path["Time"].max()
 
         final_row = stock_path.iloc[-1]
         final_price = float(final_row["Price"])
@@ -576,53 +608,81 @@ def build_weekly_price_tracker(
         highest = stock_path.loc[max_idx]
         lowest = stock_path.loc[min_idx]
 
+        true_rows = pd.DataFrame()
+        best = None
+
         if predicted == "UP":
             true_rows = stock_path[stock_path["Price"] > monday_price]
+            base["Final 1-Share P/L"] = final_price - monday_price
 
             if not true_rows.empty:
                 best = highest
+                first = true_rows.iloc[0]
                 best_price = float(best["Price"])
-                pnl = best_price - monday_price
+                first_price = float(first["Price"])
 
                 base["Prediction True During Week"] = "YES"
-                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["First Correct Time"] = first["Time"]
+                base["First Correct Price"] = first_price
+                base["First Correct Move %"] = float(first["Move %"])
+                base["First Correct 1-Share P/L"] = first_price - monday_price
                 base["Best Correct Time"] = best["Time"]
                 base["Best Correct Price"] = best_price
                 base["Best Correct Move %"] = float(best["Move %"])
-                base["1-Share Best Correct P/L"] = pnl
+                base["1-Share Best Correct P/L"] = best_price - monday_price
+
+                before_correct = stock_path[stock_path["Time"] <= first["Time"]]
+                worst = before_correct.loc[before_correct["Price"].idxmin()]
+                base["Worst Before Correct Time"] = worst["Time"]
+                base["Worst Before Correct Price"] = float(worst["Price"])
+                base["Worst Before Correct Move %"] = float(worst["Move %"])
+                base["Worst Before Correct 1-Share P/L"] = float(worst["Price"] - monday_price)
             else:
                 base["Prediction True During Week"] = "NO"
-
-            base["Final 1-Share P/L"] = final_price - monday_price
 
         elif predicted == "DOWN":
             true_rows = stock_path[stock_path["Price"] < monday_price]
+            base["Final 1-Share P/L"] = monday_price - final_price
 
             if not true_rows.empty:
                 best = lowest
+                first = true_rows.iloc[0]
                 best_price = float(best["Price"])
-                pnl = monday_price - best_price
+                first_price = float(first["Price"])
 
                 base["Prediction True During Week"] = "YES"
-                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["First Correct Time"] = first["Time"]
+                base["First Correct Price"] = first_price
+                base["First Correct Move %"] = float(first["Move %"])
+                base["First Correct 1-Share P/L"] = monday_price - first_price
                 base["Best Correct Time"] = best["Time"]
                 base["Best Correct Price"] = best_price
                 base["Best Correct Move %"] = float(best["Move %"])
-                base["1-Share Best Correct P/L"] = pnl
+                base["1-Share Best Correct P/L"] = monday_price - best_price
+
+                before_correct = stock_path[stock_path["Time"] <= first["Time"]]
+                worst = before_correct.loc[before_correct["Price"].idxmax()]
+                base["Worst Before Correct Time"] = worst["Time"]
+                base["Worst Before Correct Price"] = float(worst["Price"])
+                base["Worst Before Correct Move %"] = float(worst["Move %"])
+                base["Worst Before Correct 1-Share P/L"] = float(monday_price - worst["Price"])
             else:
                 base["Prediction True During Week"] = "NO"
 
-            base["Final 1-Share P/L"] = monday_price - final_price
-
         elif predicted == "NEUTRAL":
             true_rows = stock_path[stock_path["Move %"].abs() <= 0.50]
+            base["Final 1-Share P/L"] = 0.0
 
             if not true_rows.empty:
                 closest_idx = true_rows["Move %"].abs().idxmin()
                 best = true_rows.loc[closest_idx]
+                first = true_rows.iloc[0]
 
                 base["Prediction True During Week"] = "YES"
-                base["First Correct Time"] = true_rows.iloc[0]["Time"]
+                base["First Correct Time"] = first["Time"]
+                base["First Correct Price"] = float(first["Price"])
+                base["First Correct Move %"] = float(first["Move %"])
+                base["First Correct 1-Share P/L"] = 0.0
                 base["Best Correct Time"] = best["Time"]
                 base["Best Correct Price"] = float(best["Price"])
                 base["Best Correct Move %"] = float(best["Move %"])
@@ -630,7 +690,18 @@ def build_weekly_price_tracker(
             else:
                 base["Prediction True During Week"] = "NO"
 
-            base["Final 1-Share P/L"] = 0.0
+        base["Best vs Held Gap"] = float(base["1-Share Best Correct P/L"] - base["Final 1-Share P/L"])
+        base["Best Exit Alert"] = alert_label(
+            base["1-Share Best Correct P/L"],
+            base["Prediction True During Week"],
+        )
+
+        if base["Prediction True During Week"] == "YES":
+            base["Exit Timing"] = timing_bucket(
+                base["Best Correct Time"],
+                path_first_time,
+                path_last_time,
+            )
 
         output_rows.append(base)
 
@@ -646,6 +717,9 @@ def build_weekly_price_tracker(
         "Prediction True During Week",
         "Monday Price",
         "First Correct Time",
+        "First Correct Price",
+        "First Correct Move %",
+        "First Correct 1-Share P/L",
         "Best Correct Time",
         "Best Correct Price",
         "Best Correct Move %",
@@ -653,6 +727,13 @@ def build_weekly_price_tracker(
         "Final Price Used",
         "Final Move %",
         "Final 1-Share P/L",
+        "Best vs Held Gap",
+        "Exit Timing",
+        "Best Exit Alert",
+        "Worst Before Correct Time",
+        "Worst Before Correct Price",
+        "Worst Before Correct Move %",
+        "Worst Before Correct 1-Share P/L",
     ]
 
     return out[preferred_cols]
@@ -778,152 +859,26 @@ def build_weekly_truth_group_summary(path_tracker_df: pd.DataFrame) -> pd.DataFr
     return pd.DataFrame(rows)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_etf_best_exit_comparison(
-    etfs: tuple[tuple[str, str], ...],
-    monday_date: date,
-    comparison_capital: float,
-    model_best_sell_pnl: float,
-) -> pd.DataFrame:
-    """
-    Compares the model's best-sell result against famous ETFs.
-
-    ETF logic:
-      - Buy ETF at this week's Monday reference price.
-      - Sell at the ETF's best intraday close available so far this week.
-      - Compare that best weekly ETF profit margin with the model's best-sell profit margin.
-    """
-    rows = []
-    start_date = monday_date
-    end_date = datetime.now().date() + timedelta(days=1)
-
-    model_best_sell_margin_pct = (
-        model_best_sell_pnl / comparison_capital * 100
-        if comparison_capital
-        else None
-    )
-
-    for ticker, name in etfs:
-        symbol = yahoo_symbol(ticker)
-
-        base = {
-            "ETF": ticker,
-            "Name": name,
-            "Monday Price": None,
-            "Best Sell Time": None,
-            "Best Sell Price": None,
-            "ETF Best Weekly Profit %": None,
-            "1-Share ETF Best Profit": None,
-            "Comparison Capital": comparison_capital if comparison_capital else None,
-            "ETF Best Profit on Same Capital": None,
-            "Model Best Sell Profit": model_best_sell_pnl,
-            "Model Best Sell Profit %": model_best_sell_margin_pct,
-            "ETF % Difference vs Model": None,
-            "ETF $ Difference vs Model": None,
-            "Current ETF Price": None,
-            "ETF Held-To-Now Profit": None,
-            "Price Error": "",
-        }
-
-        try:
-            df = yf.download(
-                symbol,
-                start=start_date.isoformat(),
-                end=end_date.isoformat(),
-                interval="30m",
-                auto_adjust=True,
-                progress=False,
-                prepost=False,
-                threads=False,
-            )
-
-            if df is None or df.empty:
-                rows.append(base)
-                continue
-
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [c[0] for c in df.columns]
-
-            df = df.rename(columns=str.lower)
-            df.index = pd.to_datetime(df.index).tz_localize(None)
-
-            if "close" not in df.columns or df["close"].dropna().empty:
-                rows.append(base)
-                continue
-
-            path = df[["close"]].dropna().copy()
-            monday_rows = path[path.index.date == monday_date]
-
-            if monday_rows.empty:
-                rows.append(base)
-                continue
-
-            window_start = datetime.combine(monday_date, time(11, 30))
-            window_end = datetime.combine(monday_date, time(12, 30))
-            noon_window = monday_rows[
-                (monday_rows.index >= window_start)
-                & (monday_rows.index <= window_end)
-            ]
-
-            if not noon_window.empty:
-                monday_price = float(noon_window["close"].mean())
-            else:
-                monday_price = float(monday_rows["close"].iloc[0])
-
-            best_idx = path["close"].idxmax()
-            best_price = float(path.loc[best_idx, "close"])
-            current_price = float(path["close"].iloc[-1])
-
-            one_share_best_pnl = best_price - monday_price
-            etf_best_profit_pct = one_share_best_pnl / monday_price * 100 if monday_price else 0.0
-            held_pnl = current_price - monday_price
-
-            if comparison_capital and monday_price:
-                etf_same_capital_pnl = (comparison_capital / monday_price) * one_share_best_pnl
-                etf_dollar_difference = etf_same_capital_pnl - model_best_sell_pnl
-            else:
-                etf_same_capital_pnl = None
-                etf_dollar_difference = None
-
-            if model_best_sell_margin_pct is not None:
-                etf_pct_difference = etf_best_profit_pct - model_best_sell_margin_pct
-            else:
-                etf_pct_difference = None
-
-            base.update(
-                {
-                    "Monday Price": monday_price,
-                    "Best Sell Time": best_idx,
-                    "Best Sell Price": best_price,
-                    "ETF Best Weekly Profit %": etf_best_profit_pct,
-                    "1-Share ETF Best Profit": one_share_best_pnl,
-                    "ETF Best Profit on Same Capital": etf_same_capital_pnl,
-                    "ETF % Difference vs Model": etf_pct_difference,
-                    "ETF $ Difference vs Model": etf_dollar_difference,
-                    "Current ETF Price": current_price,
-                    "ETF Held-To-Now Profit": held_pnl,
-                }
-            )
-
-        except Exception as exc:
-            base["Price Error"] = str(exc)
-
-        rows.append(base)
-
-    return pd.DataFrame(rows)
 
 def style_weekly_path_tracker(df: pd.DataFrame):
     format_map = {
         "Monday Price": "${:,.2f}",
         "Best Correct Price": "${:,.2f}",
         "Best Correct Move %": "{:+.2f}%",
+        "First Correct Price": "${:,.2f}",
+        "First Correct Move %": "{:+.2f}%",
+        "First Correct 1-Share P/L": "${:+,.2f}",
         "1-Share Best Correct P/L": "${:+,.2f}",
         "Final Price Used": "${:,.2f}",
         "Final Move %": "{:+.2f}%",
         "Final 1-Share P/L": "${:+,.2f}",
+        "Best vs Held Gap": "${:+,.2f}",
+        "Worst Before Correct Price": "${:,.2f}",
+        "Worst Before Correct Move %": "{:+.2f}%",
+        "Worst Before Correct 1-Share P/L": "${:+,.2f}",
     }
 
-    for col in ["First Correct Time", "Best Correct Time"]:
+    for col in ["First Correct Time", "Best Correct Time", "Worst Before Correct Time"]:
         if col in df.columns:
             format_map[col] = lambda x: "" if pd.isna(x) else pd.to_datetime(x).strftime("%a %I:%M %p")
 
@@ -963,6 +918,34 @@ def style_weekly_path_tracker(df: pd.DataFrame):
 
         return "color: #f8fafc; font-weight: 700;"
 
+    def color_alert(value):
+        value = str(value)
+
+        if value == "Great exit":
+            return "background-color: #047857; color: #ffffff; font-weight: 850;"
+        if value == "Good exit":
+            return "background-color: #1e3a8a; color: #ffffff; font-weight: 850;"
+        if value == "Tiny win":
+            return "background-color: #92400e; color: #ffffff; font-weight: 850;"
+        if value == "Never worked":
+            return "background-color: #374151; color: #ffffff; font-weight: 850;"
+
+        return "color: #f8fafc; font-weight: 700;"
+
+    def color_timing(value):
+        value = str(value).upper()
+
+        if value == "EARLY":
+            return "background-color: #047857; color: #ffffff; font-weight: 850;"
+        if value == "MIDDLE":
+            return "background-color: #1e3a8a; color: #ffffff; font-weight: 850;"
+        if value == "LATE":
+            return "background-color: #92400e; color: #ffffff; font-weight: 850;"
+        if value == "N/A":
+            return "background-color: #374151; color: #ffffff; font-weight: 850;"
+
+        return "color: #f8fafc; font-weight: 700;"
+
     def color_money(value):
         try:
             if value > 0:
@@ -985,11 +968,22 @@ def style_weekly_path_tracker(df: pd.DataFrame):
     if "Predicted Direction" in df.columns:
         styled = styled.map(color_direction, subset=["Predicted Direction"])
 
+    if "Best Exit Alert" in df.columns:
+        styled = styled.map(color_alert, subset=["Best Exit Alert"])
+
+    if "Exit Timing" in df.columns:
+        styled = styled.map(color_timing, subset=["Exit Timing"])
+
     for col in [
         "Best Correct Move %",
+        "First Correct Move %",
+        "First Correct 1-Share P/L",
         "1-Share Best Correct P/L",
         "Final Move %",
         "Final 1-Share P/L",
+        "Best vs Held Gap",
+        "Worst Before Correct Move %",
+        "Worst Before Correct 1-Share P/L",
     ]:
         if col in df.columns:
             styled = styled.map(color_money, subset=[col])
@@ -1518,13 +1512,15 @@ def style_money(df: pd.DataFrame):
         "Best Exit - Wrong P/L",
         "Final Price Used",
         "Best Sell Price",
-        "1-Share ETF Best Profit",
-        "ETF Best Profit on Same Capital",
         "Model Best Sell Profit",
-        "ETF $ Difference vs Model",
         "Comparison Capital",
-        "Current ETF Price",
-        "ETF Held-To-Now Profit",
+        "First Correct Price",
+        "First Correct 1-Share P/L",
+        "Best vs Held Gap",
+        "Worst Before Correct Price",
+        "Worst Before Correct 1-Share P/L",
+        "Total 1-Share P/L",
+        "Difference vs Held",
     ]:
         if col in df.columns:
             format_map[col] = "${:,.2f}"
@@ -1535,9 +1531,9 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
-        "ETF Best Weekly Profit %",
         "Model Best Sell Profit %",
-        "ETF % Difference vs Model",
+        "First Correct Move %",
+        "Worst Before Correct Move %",
     ]:
         if col in df.columns:
             format_map[col] = "{:.2f}%"
@@ -1589,14 +1585,15 @@ def style_money(df: pd.DataFrame):
         "Avg Change Since Monday %",
         "Stock Move %",
         "Position Return %",
-        "ETF Best Weekly Profit %",
         "Model Best Sell Profit %",
-        "ETF % Difference vs Model",
-        "1-Share ETF Best Profit",
-        "ETF Best Profit on Same Capital",
         "Model Best Sell Profit",
-        "ETF $ Difference vs Model",
-        "ETF Held-To-Now Profit",
+        "First Correct Price",
+        "First Correct 1-Share P/L",
+        "Best vs Held Gap",
+        "Worst Before Correct Price",
+        "Worst Before Correct 1-Share P/L",
+        "Total 1-Share P/L",
+        "Difference vs Held",
     ]:
         if col in df.columns:
             styled = styled.map(color_num, subset=[col])
@@ -1611,6 +1608,194 @@ def style_money(df: pd.DataFrame):
 
 
 
+def build_exit_rule_test(path_tracker_df: pd.DataFrame) -> pd.DataFrame:
+    """Compare practical exit rules using the same 1-share-per-stock assumption."""
+    if path_tracker_df.empty:
+        return pd.DataFrame(
+            columns=["Exit Rule", "Stocks", "Total 1-Share P/L", "Difference vs Held", "Notes"]
+        )
+
+    valid = path_tracker_df[
+        path_tracker_df["Prediction True During Week"].isin(["YES", "NO"])
+    ].copy()
+
+    if valid.empty:
+        return pd.DataFrame(
+            columns=["Exit Rule", "Stocks", "Total 1-Share P/L", "Difference vs Held", "Notes"]
+        )
+
+    held = float(valid["Final 1-Share P/L"].fillna(0).sum())
+
+    best_exit = float(
+        valid.apply(
+            lambda r: r["1-Share Best Correct P/L"]
+            if r["Prediction True During Week"] == "YES"
+            else r["Final 1-Share P/L"],
+            axis=1,
+        ).fillna(0).sum()
+    )
+
+    first_correct = float(
+        valid.apply(
+            lambda r: r["First Correct 1-Share P/L"]
+            if r["Prediction True During Week"] == "YES"
+            else r["Final 1-Share P/L"],
+            axis=1,
+        ).fillna(0).sum()
+    )
+
+    rows = [
+        {
+            "Exit Rule": "Best weekly exit",
+            "Stocks": int(len(valid)),
+            "Total 1-Share P/L": best_exit,
+            "Difference vs Held": best_exit - held,
+            "Notes": "Sell/cover at the best correct price; never-correct calls use latest price.",
+        },
+        {
+            "Exit Rule": "First correct exit",
+            "Stocks": int(len(valid)),
+            "Total 1-Share P/L": first_correct,
+            "Difference vs Held": first_correct - held,
+            "Notes": "Exit as soon as the call first becomes right; never-correct calls use latest price.",
+        },
+        {
+            "Exit Rule": "Held to now / Friday close",
+            "Stocks": int(len(valid)),
+            "Total 1-Share P/L": held,
+            "Difference vs Held": 0.0,
+            "Notes": "Hold every call to the latest available price. If checked after Friday close, this acts as Friday close.",
+        },
+    ]
+
+    return pd.DataFrame(rows)
+
+
+def build_score_relationship_df(tracker_df: pd.DataFrame, path_tracker_df: pd.DataFrame) -> pd.DataFrame:
+    if tracker_df.empty or path_tracker_df.empty:
+        return pd.DataFrame()
+
+    cols = [
+        "Ticker",
+        "Model Score",
+        "Conviction",
+        "Expected Move %",
+        "Action",
+        "Direction",
+    ]
+    safe_cols = [c for c in cols if c in tracker_df.columns]
+
+    out = tracker_df[safe_cols].merge(
+        path_tracker_df[
+            [
+                "Ticker",
+                "Prediction True During Week",
+                "Best Correct Move %",
+                "1-Share Best Correct P/L",
+                "Final Move %",
+                "Final 1-Share P/L",
+                "Best vs Held Gap",
+            ]
+        ],
+        on="Ticker",
+        how="left",
+    )
+
+    return out
+
+
+def make_score_relationship_chart(score_df: pd.DataFrame):
+    if score_df.empty or "Model Score" not in score_df.columns or "Best Correct Move %" not in score_df.columns:
+        return None
+
+    chart_df = score_df.dropna(subset=["Model Score", "Best Correct Move %"]).copy()
+
+    if chart_df.empty:
+        return None
+
+    return (
+        alt.Chart(chart_df)
+        .mark_circle(size=120, opacity=0.85)
+        .encode(
+            x=alt.X(
+                "Model Score:Q",
+                title="Model Score",
+                axis=alt.Axis(labelColor="#cbd5e1", titleColor="#e5e7eb"),
+            ),
+            y=alt.Y(
+                "Best Correct Move %:Q",
+                title="Best Correct Move %",
+                axis=alt.Axis(labelColor="#cbd5e1", titleColor="#e5e7eb", gridColor="#334155"),
+            ),
+            color=alt.Color(
+                "Prediction True During Week:N",
+                title="True during week",
+                scale=alt.Scale(
+                    domain=["YES", "NO", "N/A"],
+                    range=["#047857", "#b91c1c", "#374151"],
+                ),
+                legend=alt.Legend(labelColor="#e5e7eb", titleColor="#e5e7eb"),
+            ),
+            tooltip=[
+                alt.Tooltip("Ticker:N"),
+                alt.Tooltip("Action:N"),
+                alt.Tooltip("Direction:N"),
+                alt.Tooltip("Model Score:Q", format=".3f"),
+                alt.Tooltip("Conviction:Q"),
+                alt.Tooltip("Best Correct Move %:Q", format=".2f"),
+                alt.Tooltip("Final Move %:Q", format=".2f"),
+                alt.Tooltip("Best vs Held Gap:Q", format=".2f"),
+            ],
+        )
+        .properties(height=330)
+        .configure_view(strokeWidth=0)
+        .configure_axis(domain=False, ticks=False)
+    )
+
+
+def build_weekly_report_card(path_tracker_df: pd.DataFrame) -> tuple[str, str, pd.DataFrame]:
+    summary = build_weekly_truth_summary(path_tracker_df)
+
+    true_pct = float(summary.get("true_pct", 0.0))
+    best_pnl = float(summary.get("best_correct_pnl", 0.0))
+    final_pnl = float(summary.get("final_pnl", 0.0))
+    gap = best_pnl - final_pnl
+
+    if summary.get("total", 0) == 0:
+        grade = "N/A"
+        verdict = "No usable weekly price data yet."
+    elif true_pct >= 80 and final_pnl > 0 and best_pnl > 0:
+        grade = "A"
+        verdict = "Strong week. The model was right often and still positive when held."
+    elif true_pct >= 70 and best_pnl > 0:
+        grade = "B"
+        verdict = "Good signal week, but exit timing still matters."
+    elif true_pct >= 55 and best_pnl > 0:
+        grade = "C"
+        verdict = "Mixed week. There was tradable upside, but the signals need tighter exits."
+    elif true_pct >= 40:
+        grade = "D"
+        verdict = "Weak week. Some calls worked, but not enough to trust without stricter filters."
+    else:
+        grade = "F"
+        verdict = "Bad week. The model missed too many calls."
+
+    report_df = pd.DataFrame(
+        [
+            ["Grade", grade],
+            ["Verdict", verdict],
+            ["Stocks checked", summary.get("total", 0)],
+            ["True during week %", true_pct / 100],
+            ["Best weekly exit P/L", best_pnl],
+            ["Held-to-now P/L", final_pnl],
+            ["Missed profit gap", gap],
+        ],
+        columns=["Metric", "Value"],
+    )
+
+    return grade, verdict, report_df
+
+
 def build_excel_download(
     tracker_df: pd.DataFrame,
     weekly_path_tracker_df: pd.DataFrame,
@@ -1622,6 +1807,9 @@ def build_excel_download(
     from openpyxl.utils import get_column_letter
 
     weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    exit_rule_df = build_exit_rule_test(weekly_path_tracker_df)
+    score_relationship_df = build_score_relationship_df(tracker_df, weekly_path_tracker_df)
+    _, _, report_card_df = build_weekly_report_card(weekly_path_tracker_df)
 
     dashboard_summary_df = pd.DataFrame(
         [
@@ -1673,6 +1861,9 @@ def build_excel_download(
         "Ticker",
         "Prediction True During Week",
         "First Correct Time",
+        "First Correct Price",
+        "First Correct Move %",
+        "First Correct 1-Share P/L",
         "Best Correct Time",
         "Best Correct Price",
         "Best Correct Move %",
@@ -1680,6 +1871,13 @@ def build_excel_download(
         "Final Price Used",
         "Final Move %",
         "Final 1-Share P/L",
+        "Best vs Held Gap",
+        "Exit Timing",
+        "Best Exit Alert",
+        "Worst Before Correct Time",
+        "Worst Before Correct Price",
+        "Worst Before Correct Move %",
+        "Worst Before Correct 1-Share P/L",
     ]
 
     safe_tracker_cols = [c for c in tracker_cols if c in tracker_df.columns]
@@ -1700,12 +1898,18 @@ def build_excel_download(
             "Prediction True During Week": "Correct Eventually During Week",
             "1-Share Best Correct P/L": "Best Exit 1-Share P/L",
             "Final 1-Share P/L": "Held-To-Now 1-Share P/L",
+            "First Correct 1-Share P/L": "First-Correct Exit 1-Share P/L",
+            "Best vs Held Gap": "Missed Profit vs Best Exit",
+            "Worst Before Correct 1-Share P/L": "Worst Before Correct 1-Share P/L",
         }
     )
 
 
     sheet_data = {
         "Full Stock Details": full_detail_df,
+        "Weekly Report Card": report_card_df,
+        "Exit Rule Test": exit_rule_df,
+        "Score Relationship": score_relationship_df,
         "Dashboard Summary": dashboard_summary_df,
         "Weekly Truth Summary": weekly_group_summary_df,
         "Weekly Price Tracker": export_weekly_df,
@@ -1753,13 +1957,20 @@ def build_excel_download(
         "Best Exit 1-Share P/L",
         "Held-To-Now 1-Share P/L",
         "Best Sell Price",
-        "1-Share ETF Best Profit",
-        "ETF Best Profit on Same Capital",
         "Model Best Sell Profit",
-        "ETF $ Difference vs Model",
         "Comparison Capital",
-        "Current ETF Price",
-        "ETF Held-To-Now Profit",
+        "First Correct Price",
+        "First Correct 1-Share P/L",
+        "Best vs Held Gap",
+        "Worst Before Correct Price",
+        "Worst Before Correct 1-Share P/L",
+        "First-Correct Exit 1-Share P/L",
+        "Missed Profit vs Best Exit",
+        "Total 1-Share P/L",
+        "Difference vs Held",
+        "Best weekly exit P/L",
+        "Held-to-now P/L",
+        "Missed profit gap",
     }
 
     percent_cols = {
@@ -1771,9 +1982,10 @@ def build_excel_download(
         "Avg Change Since Monday %",
         "Percent Return",
         "Current Move Since Monday %",
-        "ETF Best Weekly Profit %",
         "Model Best Sell Profit %",
-        "ETF % Difference vs Model",
+        "First Correct Move %",
+        "Worst Before Correct Move %",
+        "True during week %",
     }
 
     def safe_value(value):
@@ -1873,16 +2085,18 @@ def build_excel_download(
                 elif col_name in percent_cols and isinstance(value, (int, float)):
                     cell.number_format = '0.00"%"'
 
-        if sheet_name == "Dashboard Summary":
+        if sheet_name in ["Dashboard Summary", "Weekly Report Card"]:
             for row_idx in range(2, ws.max_row + 1):
                 metric = ws.cell(row=row_idx, column=1).value
-                if metric == "True during week %":
+                if metric in ["True during week %"]:
                     ws.cell(row=row_idx, column=2).number_format = "0.00%"
                 if metric in [
                     "Best exit P/L",
                     "Wrong final P/L",
                     "Best exit - wrong P/L",
                     "Held-to-now P/L",
+                    "Best weekly exit P/L",
+                    "Missed profit gap",
                 ]:
                     ws.cell(row=row_idx, column=2).number_format = '$#,##0.00;[Red]-$#,##0.00'
 
@@ -1966,6 +2180,14 @@ with tab_dashboard:
         combined_return = 0.0
 
     weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    exit_rule_df = build_exit_rule_test(weekly_path_tracker_df)
+    score_relationship_df = build_score_relationship_df(tracker_df, weekly_path_tracker_df)
+    report_grade, report_verdict, report_card_df = build_weekly_report_card(weekly_path_tracker_df)
+
+    st.subheader("Weekly report card")
+    grade_col, verdict_col = st.columns([1, 4])
+    grade_col.metric("Grade", report_grade)
+    verdict_col.info(report_verdict)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active calls", active_total)
@@ -1996,6 +2218,13 @@ with tab_dashboard:
         "Held-to-now P/L",
         f"${weekly_truth_summary['final_pnl']:,.2f}",
         "Latest price result",
+    )
+
+    missed_profit_gap = weekly_truth_summary["best_correct_pnl"] - weekly_truth_summary["final_pnl"]
+    st.metric(
+        "Missed profit gap",
+        f"${missed_profit_gap:,.2f}",
+        "Best exit P/L minus held-to-now P/L",
     )
 
     st.subheader("Portfolio performance")
@@ -2065,15 +2294,45 @@ with tab_dashboard:
 
         all_week_df = weekly_path_tracker_df.copy()
 
-        st.subheader("Weekly truth summary")
+        st.subheader("Weekly truth and exit analysis")
 
         weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
 
-        st.dataframe(
-            style_money(weekly_group_summary_df),
-            use_container_width=True,
-            hide_index=True,
+        summary_tab, exit_tab, score_tab = st.tabs(
+            ["Truth summary", "Exit rules and missed profit", "Model score test"]
         )
+
+        with summary_tab:
+            st.dataframe(
+                style_money(weekly_group_summary_df),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with exit_tab:
+            st.caption(
+                "This keeps the old best-exit logic, but puts it beside more realistic exit rules."
+            )
+            st.dataframe(
+                style_money(exit_rule_df),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with score_tab:
+            st.caption(
+                "Checks whether a stronger model score actually lined up with a better weekly move."
+            )
+            score_chart = make_score_relationship_chart(score_relationship_df)
+            if score_chart is None:
+                st.info("No score relationship chart available yet.")
+            else:
+                st.altair_chart(score_chart, use_container_width=True)
+            st.dataframe(
+                style_money(score_relationship_df),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         true_tab, false_tab, all_tab = st.tabs(
             ["True during week", "False during week", "All stocks"]
@@ -2086,6 +2345,9 @@ with tab_dashboard:
             "Prediction True During Week",
             "Monday Price",
             "First Correct Time",
+            "First Correct Price",
+            "First Correct Move %",
+            "First Correct 1-Share P/L",
             "Best Correct Time",
             "Best Correct Price",
             "Best Correct Move %",
@@ -2093,6 +2355,13 @@ with tab_dashboard:
             "Final Price Used",
             "Final Move %",
             "Final 1-Share P/L",
+            "Best vs Held Gap",
+            "Exit Timing",
+            "Best Exit Alert",
+            "Worst Before Correct Time",
+            "Worst Before Correct Price",
+            "Worst Before Correct Move %",
+            "Worst Before Correct 1-Share P/L",
         ]
 
         with true_tab:
