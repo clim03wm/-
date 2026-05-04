@@ -274,6 +274,32 @@ def normalize_run_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     out["Run Timestamp"] = out["Run Timestamp"].apply(format_run_timestamp_et)
     return out
 
+
+
+def normalize_market_intraday_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert yfinance intraday index into naive Eastern time.
+
+    Streamlit/yfinance can return 30m bars in UTC. If we only strip the timezone,
+    19:00 UTC shows as 7 PM even though it is really 3 PM ET.
+    """
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    idx = pd.to_datetime(out.index, errors="coerce")
+
+    try:
+        if getattr(idx, "tz", None) is None:
+            idx = idx.tz_localize("UTC")
+        idx = idx.tz_convert(APP_TIMEZONE).tz_localize(None)
+        out.index = idx
+    except Exception:
+        # Last-resort fallback: keep the original values as naive datetimes.
+        out.index = pd.to_datetime(out.index, errors="coerce").tz_localize(None)
+
+    return out
+
+
 def parse_model_output(raw_text: str) -> pd.DataFrame:
     rows = []
 
@@ -339,7 +365,7 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
                     intraday.columns = [c[0] for c in intraday.columns]
 
                 intraday = intraday.rename(columns=str.lower)
-                intraday.index = pd.to_datetime(intraday.index).tz_localize(None)
+                intraday = normalize_market_intraday_index(intraday)
 
                 monday_rows = intraday[intraday.index.date == monday_date]
 
@@ -448,7 +474,7 @@ def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], m
                 df.columns = [c[0] for c in df.columns]
 
             df = df.rename(columns=str.lower)
-            df.index = pd.to_datetime(df.index).tz_localize(None)
+            df = normalize_market_intraday_index(df)
 
             if "close" not in df.columns or df["close"].dropna().empty:
                 continue
@@ -537,7 +563,7 @@ def fetch_week_price_paths(tickers: tuple[str, ...], monday_date: date) -> pd.Da
                 df.columns = [c[0] for c in df.columns]
 
             df = df.rename(columns=str.lower)
-            df.index = pd.to_datetime(df.index).tz_localize(None)
+            df = normalize_market_intraday_index(df)
 
             if "close" not in df.columns:
                 continue
@@ -965,7 +991,7 @@ def style_weekly_path_tracker(df: pd.DataFrame):
 
     for col in ["First Correct Time", "Best Correct Time", "Worst Before Correct Time"]:
         if col in df.columns:
-            format_map[col] = lambda x: "" if pd.isna(x) else pd.to_datetime(x).strftime("%a %I:%M %p")
+            format_map[col] = lambda x: "" if pd.isna(x) else pd.to_datetime(x).strftime("%a %I:%M %p ET")
 
     def color_yes_no(value):
         value = str(value).upper()
@@ -1080,7 +1106,7 @@ def filter_chart_range(chart_df: pd.DataFrame, selected_range: str) -> pd.DataFr
         return chart_df
 
     chart_df = chart_df.copy()
-    chart_df.index = pd.to_datetime(chart_df.index).tz_localize(None)
+    chart_df = normalize_market_intraday_index(chart_df)
     latest_time = chart_df.index.max()
 
     if selected_range == "LIVE":
@@ -1923,10 +1949,10 @@ def build_excel_download(
     for col in ["First Correct Time", "Best Correct Time"]:
         if col in export_weekly_df.columns:
             export_weekly_df[col] = pd.to_datetime(export_weekly_df[col], errors="coerce")
-            export_weekly_df[col] = export_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
+            export_weekly_df[col] = export_weekly_df[col].dt.strftime("%a %I:%M %p ET").fillna("")
         if col in export_active_weekly_df.columns:
             export_active_weekly_df[col] = pd.to_datetime(export_active_weekly_df[col], errors="coerce")
-            export_active_weekly_df[col] = export_active_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
+            export_active_weekly_df[col] = export_active_weekly_df[col].dt.strftime("%a %I:%M %p ET").fillna("")
 
     # Full export sheet: model info + weekly truth data + current tracker fields.
     # This is the main sheet you wanted: stock name, direction, conviction, edge,
