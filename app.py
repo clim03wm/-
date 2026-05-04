@@ -238,6 +238,42 @@ def yahoo_symbol(ticker: str) -> str:
     return str(ticker).strip().upper().replace(".", "-")
 
 
+
+APP_TIMEZONE = "America/New_York"
+
+
+def format_run_timestamp_et(value) -> str:
+    """Convert model run timestamps from UTC/offset-aware text into Eastern time."""
+    if value is None or pd.isna(value):
+        return ""
+
+    raw = str(value).strip()
+    if not raw:
+        return ""
+
+    # If it is already a display string, do not mangle it.
+    if raw.endswith(" ET") or raw.endswith(" EDT") or raw.endswith(" EST"):
+        return raw
+
+    try:
+        ts = pd.to_datetime(raw, errors="coerce", utc=True)
+        if pd.isna(ts):
+            return raw
+        return ts.tz_convert(APP_TIMEZONE).strftime("%Y-%m-%d %I:%M %p ET")
+    except Exception:
+        return raw
+
+
+def normalize_run_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep the raw model timestamp, but display the cleaned Eastern time version."""
+    if df.empty or "Run Timestamp" not in df.columns:
+        return df
+
+    out = df.copy()
+    out["Run Timestamp UTC"] = out["Run Timestamp"]
+    out["Run Timestamp"] = out["Run Timestamp"].apply(format_run_timestamp_et)
+    return out
+
 def parse_model_output(raw_text: str) -> pd.DataFrame:
     rows = []
 
@@ -270,7 +306,7 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
         except Exception:
             continue
 
-    return pd.DataFrame(rows)
+    return normalize_run_timestamps(pd.DataFrame(rows))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -1907,6 +1943,7 @@ def build_excel_download(
         "Expected Move %",
         "Setup Score",
         "Run Timestamp",
+        "Run Timestamp UTC",
         "Monday Reference Price",
         "Current Price",
         "Change Since Monday %",
@@ -2185,7 +2222,7 @@ def build_excel_download(
 
 
 st.title("Manual Weekly Stock Signal Tracker")
-st.caption("Tracks this week's model output against this week's Monday reference price, not daily percent change.")
+st.caption("Tracks this week's model output against this week's Monday reference price. Run timestamps are shown in Eastern Time.")
 
 if "raw_model_output" not in st.session_state:
     st.session_state["raw_model_output"] = DEFAULT_TEXT
