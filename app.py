@@ -181,31 +181,51 @@ st.markdown(
 )
 
 
-DEFAULT_TEXT = """1   PHM       SELL      DOWN      95          STRONG    NORMAL      -1.000    1.43      -0.000    2026-04-27T22:58:34+00:00
-2   EXPE      SELL      DOWN      88          STRONG    EVENTFUL    -0.970    -4.18     -0.000    2026-04-27T22:43:27+00:00
-3   FCX       SELL      DOWN      95          STRONG    EVENTFUL    -1.000    0.41      -0.000    2026-04-27T22:44:58+00:00
-4   TSLA      SELL      DOWN      67          MODERATE  NORMAL      -1.000    0.72      -0.000    2026-04-27T23:02:44+00:00
-5   XOM       SELL      DOWN      61          MODERATE  NORMAL      -0.638    1.63      -0.000    2026-04-27T22:43:41+00:00
-6   VLTO      SELL      DOWN      54          MODERATE  NORMAL      -0.560    -2.82     -0.000    2026-04-27T23:04:54+00:00
-7   BLK       BUY       UP        51          MODERATE  NORMAL      0.535     4.22      -0.000    2026-04-27T22:34:05+00:00
-8   MCO       BUY       UP        48          MODERATE  NORMAL      0.495     3.46      -0.000    2026-04-27T22:53:56+00:00
-9   SMCI      SELL      DOWN      50          MODERATE  NORMAL      -0.631    -7.38     -0.000    2026-04-27T23:01:47+00:00
-10  RCL       SELL      DOWN      45          MODERATE  NORMAL      -0.472    -3.04     -0.000    2026-04-27T23:00:02+00:00
-11  BA        BUY       UP        46          MODERATE  NORMAL      0.444     3.27      -0.000    2026-04-27T22:34:22+00:00
-12  NCLH      SELL      DOWN      50          MODERATE  EVENTFUL    -0.514    -2.80     -0.000    2026-04-27T22:55:20+00:00
-13  VST       WATCH     UP        42          WEAK      NORMAL      0.455     4.64      -0.000    2026-04-27T23:05:39+00:00
-14  COF       WATCH     UP        40          WEAK      NORMAL      0.428     5.55      -0.000    2026-04-27T22:35:36+00:00
-15  CARR      WATCH     UP        43          WEAK      NORMAL      0.452     3.17      -0.000    2026-04-27T22:35:49+00:00
-16  MSCI      WATCH     UP        43          WEAK      NORMAL      0.443     2.87      -0.000    2026-04-27T22:54:18+00:00
-17  APTV      WATCH     UP        39          WEAK      NORMAL      0.407     4.83      -0.000    2026-04-27T22:32:17+00:00
-18  EL        WATCH     UP        39          WEAK      NORMAL      0.389     4.99      -0.000    2026-04-27T22:43:01+00:00
-19  ALLE      WATCH     UP        35          WEAK      NORMAL      0.421     6.07      -0.000    2026-04-27T22:30:17+00:00
-20  DOV       WATCH     UP        43          WEAK      NORMAL      0.439     2.22      -0.000    2026-04-27T22:41:12+00:00
-21  ARE       WATCH     UP        38          WEAK      NORMAL      0.385     4.88      -0.000    2026-04-27T22:30:08+00:00
-22  AXP       WATCH     UP        38          WEAK      NORMAL      0.396     4.55      -0.000    2026-04-27T22:31:06+00:00
-23  ROK       WATCH     UP        39          WEAK      NORMAL      0.418     3.78      -0.000    2026-04-27T22:59:44+00:00
-24  RF        WATCH     UP        42          WEAK      NORMAL      0.394     2.80      -0.000    2026-04-27T22:59:22+00:00
-25  NFLX      WATCH     DOWN      35          WEAK      NORMAL      -0.377    -5.86     -0.000    2026-04-27T22:54:32+00:00"""
+THIS_WEEK_SIGNALS = [
+    {"rank": 1, "ticker": "TSLA", "action": "SELL", "direction": "DOWN", "conviction": 83, "edge": "STRONG", "regime": "NORMAL", "score": -1.000, "expected_move": -1.54, "position_size": 0.000, "timestamp": "2026-05-04T19:05:47+00:00"},
+    {"rank": 2, "ticker": "AXON", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "NORMAL", "score": -0.492, "expected_move": -4.62, "position_size": 0.000, "timestamp": "2026-05-04T18:37:11+00:00"},
+    {"rank": 3, "ticker": "BBY", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "score": -0.473, "expected_move": -3.81, "position_size": 0.000, "timestamp": "2026-05-04T18:37:46+00:00"},
+    {"rank": 4, "ticker": "NCLH", "action": "SELL", "direction": "DOWN", "conviction": 47, "edge": "MODERATE", "regime": "NORMAL", "score": -0.489, "expected_move": -5.19, "position_size": 0.000, "timestamp": "2026-05-04T18:58:42+00:00"},
+    {"rank": 5, "ticker": "HD", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "NORMAL", "score": -0.479, "expected_move": -3.67, "position_size": 0.000, "timestamp": "2026-05-04T18:50:17+00:00"},
+    {"rank": 6, "ticker": "SMCI", "action": "BUY", "direction": "UP", "conviction": 48, "edge": "MODERATE", "regime": "NORMAL", "score": 0.485, "expected_move": 6.44, "position_size": 0.000, "timestamp": "2026-05-04T19:04:46+00:00"},
+    {"rank": 7, "ticker": "DASH", "action": "WATCH", "direction": "UP", "conviction": 40, "edge": "WEAK", "regime": "NORMAL", "score": 0.437, "expected_move": 5.56, "position_size": 0.000, "timestamp": "2026-05-04T18:44:49+00:00"},
+    {"rank": 8, "ticker": "CTVA", "action": "WATCH", "direction": "UP", "conviction": 42, "edge": "WEAK", "regime": "NORMAL", "score": 0.435, "expected_move": 4.10, "position_size": 0.000, "timestamp": "2026-05-04T18:42:56+00:00"},
+    {"rank": 9, "ticker": "APP", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.390, "expected_move": 6.21, "position_size": 0.000, "timestamp": "2026-05-04T18:36:10+00:00"},
+    {"rank": 10, "ticker": "NDAQ", "action": "WATCH", "direction": "UP", "conviction": 41, "edge": "WEAK", "regime": "NORMAL", "score": 0.432, "expected_move": 3.26, "position_size": 0.000, "timestamp": "2026-05-04T18:57:47+00:00"},
+    {"rank": 11, "ticker": "LOW", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "EVENTFUL", "score": -0.482, "expected_move": -3.33, "position_size": 0.000, "timestamp": "2026-05-04T18:54:51+00:00"},
+    {"rank": 12, "ticker": "BG", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.421, "expected_move": 3.38, "position_size": 0.000, "timestamp": "2026-05-04T18:39:01+00:00"},
+    {"rank": 13, "ticker": "BR", "action": "WATCH", "direction": "DOWN", "conviction": 40, "edge": "WEAK", "regime": "NORMAL", "score": -0.379, "expected_move": -3.07, "position_size": 0.000, "timestamp": "2026-05-04T18:38:42+00:00"},
+    {"rank": 14, "ticker": "JCI", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.399, "expected_move": 2.35, "position_size": 0.000, "timestamp": "2026-05-04T18:52:51+00:00"},
+    {"rank": 15, "ticker": "PSKY", "action": "WATCH", "direction": "DOWN", "conviction": 33, "edge": "WEAK", "regime": "NORMAL", "score": -0.371, "expected_move": -4.77, "position_size": 0.000, "timestamp": "2026-05-04T18:59:59+00:00"},
+    {"rank": 16, "ticker": "MTB", "action": "WATCH", "direction": "DOWN", "conviction": 36, "edge": "WEAK", "regime": "NORMAL", "score": -0.395, "expected_move": -3.16, "position_size": 0.000, "timestamp": "2026-05-04T18:55:06+00:00"},
+    {"rank": 17, "ticker": "OKE", "action": "WATCH", "direction": "UP", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": 0.387, "expected_move": 1.58, "position_size": 0.000, "timestamp": "2026-05-04T18:59:28+00:00"},
+    {"rank": 18, "ticker": "MTD", "action": "WATCH", "direction": "DOWN", "conviction": 35, "edge": "WEAK", "regime": "NORMAL", "score": -0.376, "expected_move": -2.51, "position_size": 0.000, "timestamp": "2026-05-04T18:56:28+00:00"},
+    {"rank": 19, "ticker": "GEN", "action": "WATCH", "direction": "UP", "conviction": 36, "edge": "WEAK", "regime": "NORMAL", "score": 0.357, "expected_move": 2.13, "position_size": 0.000, "timestamp": "2026-05-04T18:48:50+00:00"},
+    {"rank": 20, "ticker": "KKR", "action": "WATCH", "direction": "UP", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": 0.381, "expected_move": 1.36, "position_size": 0.000, "timestamp": "2026-05-04T18:53:38+00:00"},
+    {"rank": 21, "ticker": "MSCI", "action": "WATCH", "direction": "UP", "conviction": 32, "edge": "WEAK", "regime": "NORMAL", "score": 0.348, "expected_move": 3.82, "position_size": 0.000, "timestamp": "2026-05-04T18:57:44+00:00"},
+    {"rank": 22, "ticker": "NOW", "action": "WATCH", "direction": "DOWN", "conviction": 34, "edge": "WEAK", "regime": "NORMAL", "score": -0.362, "expected_move": -2.74, "position_size": 0.000, "timestamp": "2026-05-04T19:03:37+00:00"},
+    {"rank": 23, "ticker": "AZO", "action": "WATCH", "direction": "DOWN", "conviction": 32, "edge": "WEAK", "regime": "NORMAL", "score": -0.368, "expected_move": -3.43, "position_size": 0.000, "timestamp": "2026-05-04T18:37:00+00:00"},
+    {"rank": 24, "ticker": "RF", "action": "WATCH", "direction": "DOWN", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": -0.346, "expected_move": -1.62, "position_size": 0.000, "timestamp": "2026-05-04T19:02:24+00:00"},
+    {"rank": 25, "ticker": "BKNG", "action": "WATCH", "direction": "DOWN", "conviction": 33, "edge": "WEAK", "regime": "NORMAL", "score": -0.350, "expected_move": -3.10, "position_size": 0.000, "timestamp": "2026-05-04T18:38:23+00:00"},
+
+]
+
+DEFAULT_TEXT = "\n".join(
+    (
+        f"{row['rank']:<3} "
+        f"{row['ticker']:<8} "
+        f"{row['action']:<8} "
+        f"{row['direction']:<8} "
+        f"{row['conviction']:<5} "
+        f"{row['edge']:<9} "
+        f"{row['regime']:<9} "
+        f"{row['score']:.3f} "
+        f"{row['expected_move']:.2f} "
+        f"{row['position_size']:.3f} "
+        f"{row['timestamp']}"
+    )
+    for row in THIS_WEEK_SIGNALS
+)
 
 
 
@@ -737,6 +757,35 @@ def build_weekly_price_tracker(
     ]
 
     return out[preferred_cols]
+
+
+
+def filter_active_trade_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Active trades only.
+
+    BUY/UP = long trade.
+    SELL/DOWN = short trade.
+    WATCH is excluded.
+
+    Works with either:
+    - tracker_df, which uses Direction
+    - weekly_path_tracker_df, which uses Predicted Direction
+    """
+    if df.empty:
+        return df.copy()
+
+    direction_col = "Predicted Direction" if "Predicted Direction" in df.columns else "Direction"
+
+    if "Action" not in df.columns or direction_col not in df.columns:
+        return df.iloc[0:0].copy()
+
+    return df[
+        (
+            ((df["Action"] == "BUY") & (df[direction_col] == "UP"))
+            | ((df["Action"] == "SELL") & (df[direction_col] == "DOWN"))
+        )
+    ].copy()
 
 
 def build_weekly_truth_summary(path_tracker_df: pd.DataFrame) -> dict:
@@ -1806,18 +1855,24 @@ def build_excel_download(
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     from openpyxl.utils import get_column_letter
 
-    weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
-    exit_rule_df = build_exit_rule_test(weekly_path_tracker_df)
+    active_weekly_path_tracker_df = filter_active_trade_rows(weekly_path_tracker_df)
+
+    weekly_truth_summary = build_weekly_truth_summary(active_weekly_path_tracker_df)
+    all_prediction_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    exit_rule_df = build_exit_rule_test(active_weekly_path_tracker_df)
     score_relationship_df = build_score_relationship_df(tracker_df, weekly_path_tracker_df)
-    _, _, report_card_df = build_weekly_report_card(weekly_path_tracker_df)
+    _, _, report_card_df = build_weekly_report_card(active_weekly_path_tracker_df)
 
     dashboard_summary_df = pd.DataFrame(
         [
             ["Reference Monday", monday_date.isoformat()],
-            ["Stocks checked", weekly_truth_summary["total"]],
-            ["True during week", weekly_truth_summary["true_count"]],
-            ["False during week", weekly_truth_summary["false_count"]],
-            ["True during week %", weekly_truth_summary["true_pct"] / 100],
+            ["Active stocks checked", weekly_truth_summary["total"]],
+            ["Active true during week", weekly_truth_summary["true_count"]],
+            ["Active false during week", weekly_truth_summary["false_count"]],
+            ["Active true during week %", weekly_truth_summary["true_pct"] / 100],
+            ["All predictions checked", all_prediction_truth_summary["total"]],
+            ["All predictions true during week", all_prediction_truth_summary["true_count"]],
+            ["All predictions true during week %", all_prediction_truth_summary["true_pct"] / 100],
             ["Best exit P/L", weekly_truth_summary["best_correct_pnl"]],
             ["Wrong final P/L", weekly_truth_summary["wrong_final_pnl"]],
             ["Best exit - wrong P/L", weekly_truth_summary["perfect_exit_minus_wrong_pnl"]],
@@ -1827,11 +1882,15 @@ def build_excel_download(
     )
 
     export_weekly_df = weekly_path_tracker_df.copy()
+    export_active_weekly_df = active_weekly_path_tracker_df.copy()
 
     for col in ["First Correct Time", "Best Correct Time"]:
         if col in export_weekly_df.columns:
             export_weekly_df[col] = pd.to_datetime(export_weekly_df[col], errors="coerce")
             export_weekly_df[col] = export_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
+        if col in export_active_weekly_df.columns:
+            export_active_weekly_df[col] = pd.to_datetime(export_active_weekly_df[col], errors="coerce")
+            export_active_weekly_df[col] = export_active_weekly_df[col].dt.strftime("%a %I:%M %p").fillna("")
 
     # Full export sheet: model info + weekly truth data + current tracker fields.
     # This is the main sheet you wanted: stock name, direction, conviction, edge,
@@ -1905,14 +1964,18 @@ def build_excel_download(
     )
 
 
+    all_weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
+
     sheet_data = {
         "Full Stock Details": full_detail_df,
         "Weekly Report Card": report_card_df,
         "Exit Rule Test": exit_rule_df,
         "Score Relationship": score_relationship_df,
         "Dashboard Summary": dashboard_summary_df,
-        "Weekly Truth Summary": weekly_group_summary_df,
-        "Weekly Price Tracker": export_weekly_df,
+        "Active Truth Summary": weekly_group_summary_df,
+        "All Prediction Summary": all_weekly_group_summary_df,
+        "Active Price Tracker": export_active_weekly_df,
+        "All Price Tracker": export_weekly_df,
         "Tracker": tracker_df,
     }
 
@@ -2088,7 +2151,11 @@ def build_excel_download(
         if sheet_name in ["Dashboard Summary", "Weekly Report Card"]:
             for row_idx in range(2, ws.max_row + 1):
                 metric = ws.cell(row=row_idx, column=1).value
-                if metric in ["True during week %"]:
+                if metric in [
+                    "True during week %",
+                    "Active true during week %",
+                    "All predictions true during week %",
+                ]:
                     ws.cell(row=row_idx, column=2).number_format = "0.00%"
                 if metric in [
                     "Best exit P/L",
@@ -2160,9 +2227,11 @@ with tab_dashboard:
         weekly_path_price_df = fetch_week_price_paths(tickers, monday_date)
         weekly_path_tracker_df = build_weekly_price_tracker(tracker_df, weekly_path_price_df)
 
-    active_valid = tracker_df[
-        (tracker_df["Action"].isin(["BUY", "SELL"]))
-        & (tracker_df["Correct So Far"].isin(["YES", "NO"]))
+    active_tracker_df = filter_active_trade_rows(tracker_df)
+    active_weekly_path_tracker_df = filter_active_trade_rows(weekly_path_tracker_df)
+
+    active_valid = active_tracker_df[
+        active_tracker_df["Correct So Far"].isin(["YES", "NO"])
     ].copy()
 
     active_correct = int((active_valid["Correct So Far"] == "YES").sum()) if not active_valid.empty else 0
@@ -2179,10 +2248,13 @@ with tab_dashboard:
         combined_pnl = 0.0
         combined_return = 0.0
 
-    weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
-    exit_rule_df = build_exit_rule_test(weekly_path_tracker_df)
+    # Main dashboard numbers now use active trades only.
+    # WATCH stocks are still tracked separately as all model predictions.
+    weekly_truth_summary = build_weekly_truth_summary(active_weekly_path_tracker_df)
+    all_prediction_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    exit_rule_df = build_exit_rule_test(active_weekly_path_tracker_df)
     score_relationship_df = build_score_relationship_df(tracker_df, weekly_path_tracker_df)
-    report_grade, report_verdict, report_card_df = build_weekly_report_card(weekly_path_tracker_df)
+    report_grade, report_verdict, report_card_df = build_weekly_report_card(active_weekly_path_tracker_df)
 
     st.subheader("Weekly report card")
     grade_col, verdict_col = st.columns([1, 4])
@@ -2193,10 +2265,10 @@ with tab_dashboard:
     c1.metric("Active calls", active_total)
     c2.metric("Active correct now", active_correct)
     c3.metric(
-        "True during week",
+        "Active true during week",
         f"{weekly_truth_summary['true_count']} / {weekly_truth_summary['total']}",
     )
-    c4.metric("True during week %", f"{weekly_truth_summary['true_pct']:.1f}%")
+    c4.metric("Active true week %", f"{weekly_truth_summary['true_pct']:.1f}%")
 
     c5, c6, c7, c8 = st.columns(4)
     c5.metric(
@@ -2218,6 +2290,14 @@ with tab_dashboard:
         "Held-to-now P/L",
         f"${weekly_truth_summary['final_pnl']:,.2f}",
         "Latest price result",
+    )
+
+    st.caption(
+        f"All model predictions, including WATCH: "
+        f"{all_prediction_truth_summary['true_count']} / {all_prediction_truth_summary['total']} "
+        f"true during week "
+        f"({all_prediction_truth_summary['true_pct']:.1f}%). "
+        f"Main P/L numbers use active BUY/SELL trades only."
     )
 
     missed_profit_gap = weekly_truth_summary["best_correct_pnl"] - weekly_truth_summary["final_pnl"]
@@ -2278,27 +2358,37 @@ with tab_dashboard:
     if weekly_path_tracker_df.empty:
         st.info("No weekly price-path data available yet.")
     else:
-        true_week_df = weekly_path_tracker_df[
-            weekly_path_tracker_df["Prediction True During Week"] == "YES"
+        true_week_df = active_weekly_path_tracker_df[
+            active_weekly_path_tracker_df["Prediction True During Week"] == "YES"
         ].copy()
 
-        false_week_df = weekly_path_tracker_df[
-            weekly_path_tracker_df["Prediction True During Week"] == "NO"
+        false_week_df = active_weekly_path_tracker_df[
+            active_weekly_path_tracker_df["Prediction True During Week"] == "NO"
         ].copy()
 
-        all_week_df = weekly_path_tracker_df.copy()
+        all_week_df = active_weekly_path_tracker_df.copy()
+        all_prediction_week_df = weekly_path_tracker_df.copy()
 
         st.subheader("Weekly truth and exit analysis")
 
-        weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
+        weekly_group_summary_df = build_weekly_truth_group_summary(active_weekly_path_tracker_df)
+        all_weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
 
         summary_tab, exit_tab, score_tab = st.tabs(
             ["Truth summary", "Exit rules and missed profit", "Model score test"]
         )
 
         with summary_tab:
+            st.caption("Active trades only: BUY/UP and SELL/DOWN. WATCH is excluded from the main trade-performance numbers.")
             st.dataframe(
                 style_money(weekly_group_summary_df),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("#### All predictions, including WATCH")
+            st.dataframe(
+                style_money(all_weekly_group_summary_df),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -2328,8 +2418,8 @@ with tab_dashboard:
                 hide_index=True,
             )
 
-        true_tab, false_tab, all_tab = st.tabs(
-            ["True during week", "False during week", "All stocks"]
+        true_tab, false_tab, all_tab, all_predictions_tab = st.tabs(
+            ["Active true", "Active false", "Active all", "All predictions"]
         )
 
         display_cols = [
@@ -2382,10 +2472,20 @@ with tab_dashboard:
 
         with all_tab:
             st.caption(
-                "All stocks together, with final price kept only to show what the total ending result would be."
+                "Active BUY/SELL trades only, with final price kept to show what the ending result would be."
             )
             st.dataframe(
                 style_weekly_path_tracker(all_week_df[display_cols]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with all_predictions_tab:
+            st.caption(
+                "Every model prediction, including WATCH rows. This is useful for judging the model, not trade P/L."
+            )
+            st.dataframe(
+                style_weekly_path_tracker(all_prediction_week_df[display_cols]),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -2539,7 +2639,7 @@ with tab_dashboard:
 
     st.subheader("Download results")
 
-    weekly_group_summary_df = build_weekly_truth_group_summary(weekly_path_tracker_df)
+    weekly_group_summary_df = build_weekly_truth_group_summary(active_weekly_path_tracker_df)
 
     excel_bytes = build_excel_download(
         tracker_df=tracker_df,
