@@ -591,12 +591,10 @@ def build_weekly_price_tracker(
     """
     Checks the whole week's intraday path for each stock.
 
-    Adds cleaner trading-use columns:
-      - first correct exit
-      - best correct exit
-      - missed profit from not selling/covering at the best point
-      - exit timing quality
-      - worst adverse move before the call first became correct
+    Rule:
+    - Monday does NOT count for weekly truth.
+    - If a call was only true on Monday, it is marked FALSE.
+    - A call must become true after Monday to count as TRUE.
     """
     output_rows = []
 
@@ -657,7 +655,7 @@ def build_weekly_price_tracker(
             "Final Price Used": None,
             "Final Move %": None,
             "Final 1-Share P/L": 0.0,
-            "Best vs Held Gap": None,
+            "Best vs Held Gap": 0.0,
             "Exit Timing": "N/A",
             "Best Exit Alert": "Never worked",
             "Worst Before Correct Time": None,
@@ -672,14 +670,20 @@ def build_weekly_price_tracker(
 
         monday_price = float(monday_price)
 
+        stock_path["Time"] = pd.to_datetime(stock_path["Time"], errors="coerce")
+        stock_path = stock_path.dropna(subset=["Time", "Price"]).sort_values("Time")
+
+        if stock_path.empty:
+            output_rows.append(base)
+            continue
+
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
-        stock_path = stock_path.sort_values("Time")
 
-        # Do not count a prediction as true if it only worked on Monday.
-        # It must become true at least once after Monday.
-        after_monday_mask = pd.to_datetime(stock_path["Time"]).dt.date > monday_date
+        # This is the fix: Monday bars are ignored for weekly truth.
+        # So if the stock was correct only on Monday, it becomes FALSE.
+        after_monday_path = stock_path[stock_path["Time"].dt.date > monday_date].copy()
 
-        path_first_time = stock_path["Time"].min()
+        path_first_time = after_monday_path["Time"].min() if not after_monday_path.empty else stock_path["Time"].min()
         path_last_time = stock_path["Time"].max()
 
         final_row = stock_path.iloc[-1]
@@ -689,19 +693,9 @@ def build_weekly_price_tracker(
         base["Final Price Used"] = final_price
         base["Final Move %"] = final_move_pct
 
-        max_idx = stock_path["Price"].idxmax()
-        min_idx = stock_path["Price"].idxmin()
-        highest = stock_path.loc[max_idx]
-        lowest = stock_path.loc[min_idx]
-
-        true_rows = pd.DataFrame()
-        best = None
-
         if predicted == "UP":
-            true_rows = stock_path[stock_path["Price"] > monday_price]
             base["Final 1-Share P/L"] = final_price - monday_price
-
-            valid_true_rows = true_rows[after_monday_mask]
+            valid_true_rows = after_monday_path[after_monday_path["Price"] > monday_price]
 
             if not valid_true_rows.empty:
                 best = valid_true_rows.loc[valid_true_rows["Price"].idxmax()]
@@ -729,10 +723,8 @@ def build_weekly_price_tracker(
                 base["Prediction True During Week"] = "NO"
 
         elif predicted == "DOWN":
-            true_rows = stock_path[stock_path["Price"] < monday_price]
             base["Final 1-Share P/L"] = monday_price - final_price
-
-            valid_true_rows = true_rows[after_monday_mask]
+            valid_true_rows = after_monday_path[after_monday_path["Price"] < monday_price]
 
             if not valid_true_rows.empty:
                 best = valid_true_rows.loc[valid_true_rows["Price"].idxmin()]
@@ -760,10 +752,8 @@ def build_weekly_price_tracker(
                 base["Prediction True During Week"] = "NO"
 
         elif predicted == "NEUTRAL":
-            true_rows = stock_path[stock_path["Move %"].abs() <= 0.50]
             base["Final 1-Share P/L"] = 0.0
-
-            valid_true_rows = true_rows[after_monday_mask]
+            valid_true_rows = after_monday_path[after_monday_path["Move %"].abs() <= 0.50]
 
             if not valid_true_rows.empty:
                 closest_idx = valid_true_rows["Move %"].abs().idxmin()
@@ -782,8 +772,8 @@ def build_weekly_price_tracker(
             else:
                 base["Prediction True During Week"] = "NO"
 
-        best_correct_pl = float(base["1-Share Best Correct P/L"])
-        held_pl = float(base["Final 1-Share P/L"])
+        best_correct_pl = float(base["1-Share Best Correct P/L"] or 0.0)
+        held_pl = float(base["Final 1-Share P/L"] or 0.0)
 
         base["Best vs Held Gap"] = max(0.0, best_correct_pl - abs(held_pl))
         base["Best Exit Alert"] = alert_label(
@@ -832,7 +822,6 @@ def build_weekly_price_tracker(
     ]
 
     return out[preferred_cols]
-
 
 
 def filter_active_trade_rows(df: pd.DataFrame) -> pd.DataFrame:
