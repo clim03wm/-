@@ -775,7 +775,7 @@ def build_weekly_price_tracker(
         best_correct_pl = float(base["1-Share Best Correct P/L"] or 0.0)
         held_pl = float(base["Final 1-Share P/L"] or 0.0)
 
-        base["Best vs Held Gap"] = max(0.0, best_correct_pl - abs(held_pl))
+        base["Best vs Held Gap"] = best_correct_pl - abs(held_pl)
         base["Best Exit Alert"] = alert_label(
             base["1-Share Best Correct P/L"],
             base["Prediction True During Week"],
@@ -2367,7 +2367,7 @@ with tab_dashboard:
         "True/false counts include WATCH. P/L numbers use active BUY/SELL trades only."
     )
 
-    missed_profit_gap = max(0.0, trade_truth_summary["best_correct_pnl"] - abs(trade_truth_summary["final_pnl"]))
+    missed_profit_gap = trade_truth_summary["best_correct_pnl"] - abs(trade_truth_summary["final_pnl"])
     st.metric(
         "Missed profit gap",
         f"${missed_profit_gap:,.2f}",
