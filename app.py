@@ -675,6 +675,10 @@ def build_weekly_price_tracker(
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
         stock_path = stock_path.sort_values("Time")
 
+        # Do not count a prediction as true if it only worked on Monday.
+        # It must become true at least once after Monday.
+        after_monday_mask = pd.to_datetime(stock_path["Time"]).dt.date > monday_date
+
         path_first_time = stock_path["Time"].min()
         path_last_time = stock_path["Time"].max()
 
@@ -697,9 +701,11 @@ def build_weekly_price_tracker(
             true_rows = stock_path[stock_path["Price"] > monday_price]
             base["Final 1-Share P/L"] = final_price - monday_price
 
-            if not true_rows.empty:
-                best = highest
-                first = true_rows.iloc[0]
+            valid_true_rows = true_rows[after_monday_mask]
+
+            if not valid_true_rows.empty:
+                best = valid_true_rows.loc[valid_true_rows["Price"].idxmax()]
+                first = valid_true_rows.iloc[0]
                 best_price = float(best["Price"])
                 first_price = float(first["Price"])
 
@@ -726,9 +732,11 @@ def build_weekly_price_tracker(
             true_rows = stock_path[stock_path["Price"] < monday_price]
             base["Final 1-Share P/L"] = monday_price - final_price
 
-            if not true_rows.empty:
-                best = lowest
-                first = true_rows.iloc[0]
+            valid_true_rows = true_rows[after_monday_mask]
+
+            if not valid_true_rows.empty:
+                best = valid_true_rows.loc[valid_true_rows["Price"].idxmin()]
+                first = valid_true_rows.iloc[0]
                 best_price = float(best["Price"])
                 first_price = float(first["Price"])
 
@@ -755,10 +763,12 @@ def build_weekly_price_tracker(
             true_rows = stock_path[stock_path["Move %"].abs() <= 0.50]
             base["Final 1-Share P/L"] = 0.0
 
-            if not true_rows.empty:
-                closest_idx = true_rows["Move %"].abs().idxmin()
-                best = true_rows.loc[closest_idx]
-                first = true_rows.iloc[0]
+            valid_true_rows = true_rows[after_monday_mask]
+
+            if not valid_true_rows.empty:
+                closest_idx = valid_true_rows["Move %"].abs().idxmin()
+                best = valid_true_rows.loc[closest_idx]
+                first = valid_true_rows.iloc[0]
 
                 base["Prediction True During Week"] = "YES"
                 base["First Correct Time"] = first["Time"]
@@ -772,7 +782,10 @@ def build_weekly_price_tracker(
             else:
                 base["Prediction True During Week"] = "NO"
 
-        base["Best vs Held Gap"] = float(base["1-Share Best Correct P/L"] - base["Final 1-Share P/L"])
+        best_correct_pl = float(base["1-Share Best Correct P/L"])
+        held_pl = float(base["Final 1-Share P/L"])
+
+        base["Best vs Held Gap"] = max(0.0, best_correct_pl - abs(held_pl))
         base["Best Exit Alert"] = alert_label(
             base["1-Share Best Correct P/L"],
             base["Prediction True During Week"],
@@ -2301,6 +2314,11 @@ with tab_dashboard:
     active_total = int(len(active_valid))
     active_accuracy = active_correct / active_total * 100 if active_total else 0
 
+    all_valid = tracker_df[tracker_df["Correct So Far"].isin(["YES", "NO"])].copy()
+    all_correct_now = int((all_valid["Correct So Far"] == "YES").sum()) if not all_valid.empty else 0
+    all_false_now = int((all_valid["Correct So Far"] == "NO").sum()) if not all_valid.empty else 0
+    all_total_now = int(len(all_valid))
+
     what_if_df = build_what_if(tracker_df)
     combined_row = what_if_df[what_if_df["Strategy"] == "Combined active calls: 1 share each BUY/UP + SELL/DOWN"]
 
@@ -2311,13 +2329,14 @@ with tab_dashboard:
         combined_pnl = 0.0
         combined_return = 0.0
 
-    # Main dashboard numbers now use active trades only.
-    # WATCH stocks are still tracked separately as all model predictions.
-    weekly_truth_summary = build_weekly_truth_summary(active_weekly_path_tracker_df)
-    all_prediction_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    # Truth/false counts include WATCH now.
+    # Trade P/L still uses active BUY/SELL calls only, because WATCH is not a trade.
+    weekly_truth_summary = build_weekly_truth_summary(weekly_path_tracker_df)
+    trade_truth_summary = build_weekly_truth_summary(active_weekly_path_tracker_df)
+    all_prediction_truth_summary = weekly_truth_summary
     exit_rule_df = build_exit_rule_test(active_weekly_path_tracker_df)
     score_relationship_df = build_score_relationship_df(tracker_df, weekly_path_tracker_df)
-    report_grade, report_verdict, report_card_df = build_weekly_report_card(active_weekly_path_tracker_df)
+    report_grade, report_verdict, report_card_df = build_weekly_report_card(weekly_path_tracker_df)
 
     st.subheader("Weekly report card")
     grade_col, verdict_col = st.columns([1, 4])
@@ -2325,49 +2344,45 @@ with tab_dashboard:
     verdict_col.info(report_verdict)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Active calls", active_total)
-    c2.metric("Active correct now", active_correct)
-    c3.metric(
-        "Active true during week",
+    c1.metric("Calls checked", all_total_now)
+    c2.metric("True now", all_correct_now)
+    c3.metric("False now", all_false_now)
+    c4.metric(
+        "True during week",
         f"{weekly_truth_summary['true_count']} / {weekly_truth_summary['total']}",
     )
-    c4.metric("Active true week %", f"{weekly_truth_summary['true_pct']:.1f}%")
 
     c5, c6, c7, c8 = st.columns(4)
     c5.metric(
         "Best exit P/L",
-        f"${weekly_truth_summary['best_correct_pnl']:,.2f}",
+        f"${trade_truth_summary['best_correct_pnl']:,.2f}",
         "Correct calls only",
     )
     c6.metric(
         "Wrong final P/L",
-        f"${weekly_truth_summary['wrong_final_pnl']:,.2f}",
+        f"${trade_truth_summary['wrong_final_pnl']:,.2f}",
         "Never-correct calls",
     )
     c7.metric(
         "Best exit - wrong",
-        f"${weekly_truth_summary['perfect_exit_minus_wrong_pnl']:,.2f}",
+        f"${trade_truth_summary['perfect_exit_minus_wrong_pnl']:,.2f}",
         "Sell/cover at best if right",
     )
     c8.metric(
         "Held-to-now P/L",
-        f"${weekly_truth_summary['final_pnl']:,.2f}",
+        f"${trade_truth_summary['final_pnl']:,.2f}",
         "Latest price result",
     )
 
     st.caption(
-        f"All model predictions, including WATCH: "
-        f"{all_prediction_truth_summary['true_count']} / {all_prediction_truth_summary['total']} "
-        f"true during week "
-        f"({all_prediction_truth_summary['true_pct']:.1f}%). "
-        f"Main P/L numbers use active BUY/SELL trades only."
+        "True/false counts include WATCH. P/L numbers use active BUY/SELL trades only."
     )
 
-    missed_profit_gap = weekly_truth_summary["best_correct_pnl"] - weekly_truth_summary["final_pnl"]
+    missed_profit_gap = max(0.0, trade_truth_summary["best_correct_pnl"] - abs(trade_truth_summary["final_pnl"]))
     st.metric(
         "Missed profit gap",
         f"${missed_profit_gap:,.2f}",
-        "Best exit P/L minus held-to-now P/L",
+        "Best exit P/L minus absolute held-to-now P/L",
     )
 
     st.subheader("Portfolio performance")
@@ -2421,16 +2436,16 @@ with tab_dashboard:
     if weekly_path_tracker_df.empty:
         st.info("No weekly price-path data available yet.")
     else:
-        true_week_df = active_weekly_path_tracker_df[
-            active_weekly_path_tracker_df["Prediction True During Week"] == "YES"
+        true_week_df = weekly_path_tracker_df[
+            weekly_path_tracker_df["Prediction True During Week"] == "YES"
         ].copy()
 
-        false_week_df = active_weekly_path_tracker_df[
-            active_weekly_path_tracker_df["Prediction True During Week"] == "NO"
+        false_week_df = weekly_path_tracker_df[
+            weekly_path_tracker_df["Prediction True During Week"] == "NO"
         ].copy()
 
-        all_week_df = active_weekly_path_tracker_df.copy()
-        all_prediction_week_df = weekly_path_tracker_df.copy()
+        all_week_df = weekly_path_tracker_df.copy()
+        active_week_df = active_weekly_path_tracker_df.copy()
 
         st.subheader("Weekly truth and exit analysis")
 
@@ -2442,7 +2457,7 @@ with tab_dashboard:
         )
 
         with summary_tab:
-            st.caption("Active trades only: BUY/UP and SELL/DOWN. WATCH is excluded from the main trade-performance numbers.")
+            st.caption("True/false summary includes WATCH. Active trade P/L still only uses BUY/UP and SELL/DOWN.")
             st.dataframe(
                 style_money(weekly_group_summary_df),
                 use_container_width=True,
@@ -2481,8 +2496,8 @@ with tab_dashboard:
                 hide_index=True,
             )
 
-        true_tab, false_tab, all_tab, all_predictions_tab = st.tabs(
-            ["Active true", "Active false", "Active all", "All predictions"]
+        true_tab, false_tab, all_tab, active_tab = st.tabs(
+            ["True", "False", "All predictions", "Active trades"]
         )
 
         display_cols = [
@@ -2513,7 +2528,7 @@ with tab_dashboard:
 
         with true_tab:
             st.caption(
-                "These calls were correct at least once during the week. "
+                "These predictions, including WATCH, were correct at least once during the week. "
                 "Best Correct Price is the best price in the predicted direction."
             )
             st.dataframe(
@@ -2524,7 +2539,7 @@ with tab_dashboard:
 
         with false_tab:
             st.caption(
-                "These calls never became correct during the week. "
+                "These predictions, including WATCH, never became correct during the week. "
                 "Best-correct P/L stays at $0 because the predicted move never happened."
             )
             st.dataframe(
@@ -2535,7 +2550,7 @@ with tab_dashboard:
 
         with all_tab:
             st.caption(
-                "Active BUY/SELL trades only, with final price kept to show what the ending result would be."
+                "Every model prediction, including WATCH rows. This is useful for judging true/false accuracy."
             )
             st.dataframe(
                 style_weekly_path_tracker(all_week_df[display_cols]),
@@ -2543,12 +2558,12 @@ with tab_dashboard:
                 hide_index=True,
             )
 
-        with all_predictions_tab:
+        with active_tab:
             st.caption(
-                "Every model prediction, including WATCH rows. This is useful for judging the model, not trade P/L."
+                "Active BUY/SELL trades only, with final price kept to show what the ending trade result would be."
             )
             st.dataframe(
-                style_weekly_path_tracker(all_prediction_week_df[display_cols]),
+                style_weekly_path_tracker(active_week_df[display_cols]),
                 use_container_width=True,
                 hide_index=True,
             )
