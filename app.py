@@ -241,6 +241,56 @@ def yahoo_symbol(ticker: str) -> str:
 
 
 
+def regular_market_open(dt: date) -> datetime:
+    return datetime.combine(dt, time(9, 30))
+
+
+def monday_reference_window(dt: date) -> tuple[datetime, datetime]:
+    # This app compares all moves against the model's Monday reference area.
+    # The reference area is late morning, but the tracker still counts later Monday bars.
+    return datetime.combine(dt, time(11, 30)), datetime.combine(dt, time(12, 30))
+
+
+def reference_cutoff_from_path(stock_path: pd.DataFrame, monday_date: date) -> datetime:
+    """Return the first usable post-reference bar time.
+
+    The old app threw away the whole Monday by using Time.date > monday_date.
+    That made every Monday run show 0 true during week even when calls were true right now.
+    We only ignore the opening/reference setup period, then count the rest of Monday.
+    """
+    if stock_path.empty or "Time" not in stock_path.columns:
+        return regular_market_open(monday_date)
+
+    times = pd.to_datetime(stock_path["Time"], errors="coerce").dropna()
+    if times.empty:
+        return regular_market_open(monday_date)
+
+    monday_times = times[times.dt.date == monday_date]
+    if monday_times.empty:
+        return times.min().to_pydatetime()
+
+    window_start, window_end = monday_reference_window(monday_date)
+    ref_times = monday_times[(monday_times >= window_start) & (monday_times <= window_end)]
+
+    if not ref_times.empty:
+        return ref_times.min().to_pydatetime()
+
+    after_open = monday_times[monday_times >= regular_market_open(monday_date)]
+    if not after_open.empty:
+        return after_open.min().to_pydatetime()
+
+    return monday_times.min().to_pydatetime()
+
+
+def missed_profit_gap(best_exit_pnl: float, held_pnl: float) -> float:
+    """Profit left on the table. Never show a negative missed-profit number."""
+    try:
+        return max(float(best_exit_pnl) - float(held_pnl), 0.0)
+    except Exception:
+        return 0.0
+
+
+
 APP_TIMEZONE = "America/New_York"
 
 
@@ -292,9 +342,12 @@ def normalize_market_intraday_index(df: pd.DataFrame) -> pd.DataFrame:
 
     try:
         if getattr(idx, "tz", None) is None:
-            idx = idx.tz_localize("UTC")
-        idx = idx.tz_convert(APP_TIMEZONE).tz_localize(None)
-        out.index = idx
+            # yfinance intraday rows are often already in exchange time but timezone-naive.
+            # Treat naive rows as Eastern, not UTC, otherwise 9:30 AM becomes 5:30 AM.
+            idx = idx.tz_localize(APP_TIMEZONE)
+        else:
+            idx = idx.tz_convert(APP_TIMEZONE)
+        out.index = idx.tz_localize(None)
     except Exception:
         # Last-resort fallback: keep the original values as naive datetimes.
         out.index = pd.to_datetime(out.index, errors="coerce").tz_localize(None)
@@ -397,8 +450,7 @@ def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
                 monday_rows = intraday[intraday.index.date == monday_date]
 
                 if not monday_rows.empty and "close" in monday_rows.columns:
-                    window_start = datetime.combine(monday_date, time(11, 30))
-                    window_end = datetime.combine(monday_date, time(12, 30))
+                    window_start, window_end = monday_reference_window(monday_date)
                     noon_window = monday_rows[
                         (monday_rows.index >= window_start)
                         & (monday_rows.index <= window_end)
@@ -510,8 +562,7 @@ def fetch_position_return_series(model_rows: tuple[tuple[str, str, str], ...], m
             if monday_rows.empty:
                 continue
 
-            window_start = datetime.combine(monday_date, time(11, 30))
-            window_end = datetime.combine(monday_date, time(12, 30))
+            window_start, window_end = monday_reference_window(monday_date)
             noon_window = monday_rows[
                 (monday_rows.index >= window_start)
                 & (monday_rows.index <= window_end)
@@ -619,9 +670,9 @@ def build_weekly_price_tracker(
     Checks the whole week's intraday path for each stock.
 
     Rule:
-    - Monday does NOT count for weekly truth.
-    - If a call was only true on Monday, it is marked FALSE.
-    - A call must become true after Monday to count as TRUE.
+    - The exact opening/reference setup period does not count.
+    - Later Monday bars do count, because Monday live runs should not show 0 true when calls are true now.
+    - A call must become true at or after the Monday reference cutoff.
     """
     output_rows = []
 
@@ -706,11 +757,14 @@ def build_weekly_price_tracker(
 
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
 
-        # This is the fix: Monday bars are ignored for weekly truth.
-        # So if the stock was correct only on Monday, it becomes FALSE.
-        after_monday_path = stock_path[stock_path["Time"].dt.date > monday_date].copy()
+        # Count the week after the Monday reference setup period.
+        # Do not throw away the whole Monday, or a Monday live run will incorrectly show 0 true.
+        reference_cutoff = reference_cutoff_from_path(stock_path, monday_date)
+        after_reference_path = stock_path[stock_path["Time"] >= reference_cutoff].copy()
+        if after_reference_path.empty:
+            after_reference_path = stock_path.copy()
 
-        path_first_time = after_monday_path["Time"].min() if not after_monday_path.empty else stock_path["Time"].min()
+        path_first_time = after_reference_path["Time"].min() if not after_reference_path.empty else stock_path["Time"].min()
         path_last_time = stock_path["Time"].max()
 
         final_row = stock_path.iloc[-1]
@@ -722,7 +776,7 @@ def build_weekly_price_tracker(
 
         if predicted == "UP":
             base["Final 1-Share P/L"] = final_price - monday_price
-            valid_true_rows = after_monday_path[after_monday_path["Price"] > monday_price]
+            valid_true_rows = after_reference_path[after_reference_path["Price"] > monday_price]
 
             if not valid_true_rows.empty:
                 best = valid_true_rows.loc[valid_true_rows["Price"].idxmax()]
@@ -751,7 +805,7 @@ def build_weekly_price_tracker(
 
         elif predicted == "DOWN":
             base["Final 1-Share P/L"] = monday_price - final_price
-            valid_true_rows = after_monday_path[after_monday_path["Price"] < monday_price]
+            valid_true_rows = after_reference_path[after_reference_path["Price"] < monday_price]
 
             if not valid_true_rows.empty:
                 best = valid_true_rows.loc[valid_true_rows["Price"].idxmin()]
@@ -780,7 +834,7 @@ def build_weekly_price_tracker(
 
         elif predicted == "NEUTRAL":
             base["Final 1-Share P/L"] = 0.0
-            valid_true_rows = after_monday_path[after_monday_path["Move %"].abs() <= 0.50]
+            valid_true_rows = after_reference_path[after_reference_path["Move %"].abs() <= 0.50]
 
             if not valid_true_rows.empty:
                 closest_idx = valid_true_rows["Move %"].abs().idxmin()
@@ -802,7 +856,7 @@ def build_weekly_price_tracker(
         best_correct_pl = float(base["1-Share Best Correct P/L"] or 0.0)
         held_pl = float(base["Final 1-Share P/L"] or 0.0)
 
-        base["Best vs Held Gap"] = best_correct_pl - abs(held_pl)
+        base["Best vs Held Gap"] = missed_profit_gap(best_correct_pl, held_pl)
         base["Best Exit Alert"] = alert_label(
             base["1-Share Best Correct P/L"],
             base["Prediction True During Week"],
@@ -1903,7 +1957,7 @@ def build_weekly_report_card(path_tracker_df: pd.DataFrame) -> tuple[str, str, p
     true_pct = float(summary.get("true_pct", 0.0))
     best_pnl = float(summary.get("best_correct_pnl", 0.0))
     final_pnl = float(summary.get("final_pnl", 0.0))
-    gap = best_pnl - final_pnl
+    gap = missed_profit_gap(best_pnl, final_pnl)
 
     if summary.get("total", 0) == 0:
         grade = "N/A"
@@ -2401,11 +2455,14 @@ with tab_dashboard:
         "True/false counts include WATCH. P/L numbers use active BUY/SELL trades only."
     )
 
-    missed_profit_gap = trade_truth_summary["best_correct_pnl"] - abs(trade_truth_summary["final_pnl"])
+    missed_gap_value = missed_profit_gap(
+        trade_truth_summary["best_correct_pnl"],
+        trade_truth_summary["final_pnl"],
+    )
     st.metric(
         "Missed profit gap",
-        f"${missed_profit_gap:,.2f}",
-        "Best exit P/L minus absolute held-to-now P/L",
+        f"${missed_gap_value:,.2f}",
+        "Best exit P/L minus held-to-now P/L",
     )
 
     st.subheader("Portfolio performance")
