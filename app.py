@@ -245,6 +245,10 @@ def regular_market_open(dt: date) -> datetime:
     return datetime.combine(dt, time(9, 30))
 
 
+def regular_market_close(dt: date) -> datetime:
+    return datetime.combine(dt, time(16, 0))
+
+
 def monday_reference_window(dt: date) -> tuple[datetime, datetime]:
     # This app compares all moves against the model's Monday reference area.
     # The reference area is late morning, but the tracker still counts later Monday bars.
