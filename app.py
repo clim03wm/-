@@ -182,32 +182,31 @@ st.markdown(
 
 
 THIS_WEEK_SIGNALS = [
-    {"rank": 1, "ticker": "TSLA", "action": "SELL", "direction": "DOWN", "conviction": 83, "edge": "STRONG", "regime": "NORMAL", "score": -1.000, "expected_move": -1.54, "position_size": 0.000, "timestamp": "2026-05-04T19:05:47+00:00"},
-    {"rank": 2, "ticker": "AXON", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "NORMAL", "score": -0.492, "expected_move": -4.62, "position_size": 0.000, "timestamp": "2026-05-04T18:37:11+00:00"},
-    {"rank": 3, "ticker": "BBY", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "score": -0.473, "expected_move": -3.81, "position_size": 0.000, "timestamp": "2026-05-04T18:37:46+00:00"},
-    {"rank": 4, "ticker": "NCLH", "action": "SELL", "direction": "DOWN", "conviction": 47, "edge": "MODERATE", "regime": "NORMAL", "score": -0.489, "expected_move": -5.19, "position_size": 0.000, "timestamp": "2026-05-04T18:58:42+00:00"},
-    {"rank": 5, "ticker": "HD", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "NORMAL", "score": -0.479, "expected_move": -3.67, "position_size": 0.000, "timestamp": "2026-05-04T18:50:17+00:00"},
-    {"rank": 6, "ticker": "SMCI", "action": "BUY", "direction": "UP", "conviction": 48, "edge": "MODERATE", "regime": "NORMAL", "score": 0.485, "expected_move": 6.44, "position_size": 0.000, "timestamp": "2026-05-04T19:04:46+00:00"},
-    {"rank": 7, "ticker": "DASH", "action": "WATCH", "direction": "UP", "conviction": 40, "edge": "WEAK", "regime": "NORMAL", "score": 0.437, "expected_move": 5.56, "position_size": 0.000, "timestamp": "2026-05-04T18:44:49+00:00"},
-    {"rank": 8, "ticker": "CTVA", "action": "WATCH", "direction": "UP", "conviction": 42, "edge": "WEAK", "regime": "NORMAL", "score": 0.435, "expected_move": 4.10, "position_size": 0.000, "timestamp": "2026-05-04T18:42:56+00:00"},
-    {"rank": 9, "ticker": "APP", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.390, "expected_move": 6.21, "position_size": 0.000, "timestamp": "2026-05-04T18:36:10+00:00"},
-    {"rank": 10, "ticker": "NDAQ", "action": "WATCH", "direction": "UP", "conviction": 41, "edge": "WEAK", "regime": "NORMAL", "score": 0.432, "expected_move": 3.26, "position_size": 0.000, "timestamp": "2026-05-04T18:57:47+00:00"},
-    {"rank": 11, "ticker": "LOW", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "EVENTFUL", "score": -0.482, "expected_move": -3.33, "position_size": 0.000, "timestamp": "2026-05-04T18:54:51+00:00"},
-    {"rank": 12, "ticker": "BG", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.421, "expected_move": 3.38, "position_size": 0.000, "timestamp": "2026-05-04T18:39:01+00:00"},
-    {"rank": 13, "ticker": "BR", "action": "WATCH", "direction": "DOWN", "conviction": 40, "edge": "WEAK", "regime": "NORMAL", "score": -0.379, "expected_move": -3.07, "position_size": 0.000, "timestamp": "2026-05-04T18:38:42+00:00"},
-    {"rank": 14, "ticker": "JCI", "action": "WATCH", "direction": "UP", "conviction": 38, "edge": "WEAK", "regime": "NORMAL", "score": 0.399, "expected_move": 2.35, "position_size": 0.000, "timestamp": "2026-05-04T18:52:51+00:00"},
-    {"rank": 15, "ticker": "PSKY", "action": "WATCH", "direction": "DOWN", "conviction": 33, "edge": "WEAK", "regime": "NORMAL", "score": -0.371, "expected_move": -4.77, "position_size": 0.000, "timestamp": "2026-05-04T18:59:59+00:00"},
-    {"rank": 16, "ticker": "MTB", "action": "WATCH", "direction": "DOWN", "conviction": 36, "edge": "WEAK", "regime": "NORMAL", "score": -0.395, "expected_move": -3.16, "position_size": 0.000, "timestamp": "2026-05-04T18:55:06+00:00"},
-    {"rank": 17, "ticker": "OKE", "action": "WATCH", "direction": "UP", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": 0.387, "expected_move": 1.58, "position_size": 0.000, "timestamp": "2026-05-04T18:59:28+00:00"},
-    {"rank": 18, "ticker": "MTD", "action": "WATCH", "direction": "DOWN", "conviction": 35, "edge": "WEAK", "regime": "NORMAL", "score": -0.376, "expected_move": -2.51, "position_size": 0.000, "timestamp": "2026-05-04T18:56:28+00:00"},
-    {"rank": 19, "ticker": "GEN", "action": "WATCH", "direction": "UP", "conviction": 36, "edge": "WEAK", "regime": "NORMAL", "score": 0.357, "expected_move": 2.13, "position_size": 0.000, "timestamp": "2026-05-04T18:48:50+00:00"},
-    {"rank": 20, "ticker": "KKR", "action": "WATCH", "direction": "UP", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": 0.381, "expected_move": 1.36, "position_size": 0.000, "timestamp": "2026-05-04T18:53:38+00:00"},
-    {"rank": 21, "ticker": "MSCI", "action": "WATCH", "direction": "UP", "conviction": 32, "edge": "WEAK", "regime": "NORMAL", "score": 0.348, "expected_move": 3.82, "position_size": 0.000, "timestamp": "2026-05-04T18:57:44+00:00"},
-    {"rank": 22, "ticker": "NOW", "action": "WATCH", "direction": "DOWN", "conviction": 34, "edge": "WEAK", "regime": "NORMAL", "score": -0.362, "expected_move": -2.74, "position_size": 0.000, "timestamp": "2026-05-04T19:03:37+00:00"},
-    {"rank": 23, "ticker": "AZO", "action": "WATCH", "direction": "DOWN", "conviction": 32, "edge": "WEAK", "regime": "NORMAL", "score": -0.368, "expected_move": -3.43, "position_size": 0.000, "timestamp": "2026-05-04T18:37:00+00:00"},
-    {"rank": 24, "ticker": "RF", "action": "WATCH", "direction": "DOWN", "conviction": 37, "edge": "WEAK", "regime": "NORMAL", "score": -0.346, "expected_move": -1.62, "position_size": 0.000, "timestamp": "2026-05-04T19:02:24+00:00"},
-    {"rank": 25, "ticker": "BKNG", "action": "WATCH", "direction": "DOWN", "conviction": 33, "edge": "WEAK", "regime": "NORMAL", "score": -0.350, "expected_move": -3.10, "position_size": 0.000, "timestamp": "2026-05-04T18:38:23+00:00"},
-
+    {"rank": 1, "ticker": "APTV", "action": "SELL", "direction": "DOWN", "conviction": 53, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.553, "expected_move": -8.00, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T14:49:32+00:00"},
+    {"rank": 2, "ticker": "NFLX", "action": "SELL", "direction": "DOWN", "conviction": 63, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "MOMENTUM_HIGH_BETA", "setup": "BREAKDOWN_CONTINUATION", "score": -0.619, "expected_move": -8.35, "setup_score": 0.160, "setup_rank": 5, "timestamp": "2026-05-11T15:09:26+00:00"},
+    {"rank": 3, "ticker": "KEY", "action": "SELL", "direction": "DOWN", "conviction": 64, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.641, "expected_move": -5.04, "setup_score": 0.240, "setup_rank": 3, "timestamp": "2026-05-11T15:05:21+00:00"},
+    {"rank": 4, "ticker": "EME", "action": "BUY", "direction": "UP", "conviction": 55, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "MOMENTUM_CONTINUATION", "score": 0.558, "expected_move": 4.42, "setup_score": 1.000, "setup_rank": 0, "timestamp": "2026-05-11T14:58:27+00:00"},
+    {"rank": 5, "ticker": "EFX", "action": "SELL", "direction": "DOWN", "conviction": 47, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.496, "expected_move": -7.74, "setup_score": 0.400, "setup_rank": 3, "timestamp": "2026-05-11T14:58:50+00:00"},
+    {"rank": 6, "ticker": "RF", "action": "SELL", "direction": "DOWN", "conviction": 71, "edge": "STRONG", "regime": "EVENTFUL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.655, "expected_move": -5.55, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T15:13:45+00:00"},
+    {"rank": 7, "ticker": "WEC", "action": "SELL", "direction": "DOWN", "conviction": 53, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "BREAKDOWN_CONTINUATION", "score": -0.538, "expected_move": -3.72, "setup_score": 0.060, "setup_rank": 5, "timestamp": "2026-05-11T15:19:55+00:00"},
+    {"rank": 8, "ticker": "IDXX", "action": "SELL", "direction": "DOWN", "conviction": 56, "edge": "MODERATE", "regime": "EVENTFUL", "stock_profile": "NORMAL", "setup": "BREAKDOWN_CONTINUATION", "score": -0.592, "expected_move": -5.20, "setup_score": 0.060, "setup_rank": 5, "timestamp": "2026-05-11T15:03:30+00:00"},
+    {"rank": 9, "ticker": "CFG", "action": "SELL", "direction": "DOWN", "conviction": 53, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.541, "expected_move": -6.01, "setup_score": 0.240, "setup_rank": 3, "timestamp": "2026-05-11T14:54:27+00:00"},
+    {"rank": 10, "ticker": "HCA", "action": "SELL", "direction": "DOWN", "conviction": 47, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.463, "expected_move": -4.46, "setup_score": 0.220, "setup_rank": 4, "timestamp": "2026-05-11T15:02:16+00:00"},
+    {"rank": 11, "ticker": "CRL", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.468, "expected_move": -5.19, "setup_score": 0.580, "setup_rank": 2, "timestamp": "2026-05-11T14:53:29+00:00"},
+    {"rank": 12, "ticker": "VTR", "action": "BUY", "direction": "UP", "conviction": 48, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "MOMENTUM_CONTINUATION", "score": 0.506, "expected_move": 3.01, "setup_score": 1.000, "setup_rank": 0, "timestamp": "2026-05-11T15:18:33+00:00"},
+    {"rank": 13, "ticker": "RL", "action": "SELL", "direction": "DOWN", "conviction": 53, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.506, "expected_move": -5.42, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T15:13:21+00:00"},
+    {"rank": 14, "ticker": "FITB", "action": "SELL", "direction": "DOWN", "conviction": 52, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.532, "expected_move": -5.14, "setup_score": 0.240, "setup_rank": 3, "timestamp": "2026-05-11T15:00:19+00:00"},
+    {"rank": 15, "ticker": "HD", "action": "SELL", "direction": "DOWN", "conviction": 46, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.471, "expected_move": -2.95, "setup_score": 0.220, "setup_rank": 4, "timestamp": "2026-05-11T15:02:38+00:00"},
+    {"rank": 16, "ticker": "AZO", "action": "SELL", "direction": "DOWN", "conviction": 48, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.517, "expected_move": -6.36, "setup_score": 0.240, "setup_rank": 3, "timestamp": "2026-05-11T14:50:16+00:00"},
+    {"rank": 17, "ticker": "ESS", "action": "BUY", "direction": "UP", "conviction": 48, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "MOMENTUM_CONTINUATION", "score": 0.438, "expected_move": 0.91, "setup_score": 1.000, "setup_rank": 0, "timestamp": "2026-05-11T14:59:06+00:00"},
+    {"rank": 18, "ticker": "ULTA", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "BREAKDOWN_CONTINUATION", "score": -0.447, "expected_move": -1.72, "setup_score": 0.060, "setup_rank": 4, "timestamp": "2026-05-11T15:18:03+00:00"},
+    {"rank": 19, "ticker": "CHD", "action": "SELL", "direction": "DOWN", "conviction": 47, "edge": "MODERATE", "regime": "EVENTFUL", "stock_profile": "NORMAL", "setup": "BREAKDOWN_CONTINUATION", "score": -0.505, "expected_move": -3.99, "setup_score": 0.060, "setup_rank": 5, "timestamp": "2026-05-11T14:53:55+00:00"},
+    {"rank": 20, "ticker": "ROST", "action": "SELL", "direction": "DOWN", "conviction": 50, "edge": "MODERATE", "regime": "EVENTFUL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.525, "expected_move": -7.13, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T15:14:15+00:00"},
+    {"rank": 21, "ticker": "MTB", "action": "SELL", "direction": "DOWN", "conviction": 53, "edge": "MODERATE", "regime": "EVENTFUL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.545, "expected_move": -4.80, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T15:06:59+00:00"},
+    {"rank": 22, "ticker": "TFC", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.461, "expected_move": -3.89, "setup_score": 0.240, "setup_rank": 4, "timestamp": "2026-05-11T15:17:40+00:00"},
+    {"rank": 23, "ticker": "USB", "action": "SELL", "direction": "DOWN", "conviction": 45, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "DOWN_OPPORTUNITY", "score": -0.460, "expected_move": -3.61, "setup_score": 0.240, "setup_rank": 3, "timestamp": "2026-05-11T15:17:51+00:00"},
+    {"rank": 24, "ticker": "BSX", "action": "WATCH", "direction": "UP", "conviction": 47, "edge": "WEAK", "regime": "NORMAL", "stock_profile": "NORMAL", "setup": "UP_OPPORTUNITY", "score": 0.483, "expected_move": 5.33, "setup_score": 0.280, "setup_rank": 3, "timestamp": "2026-05-11T14:51:32+00:00"},
+    {"rank": 25, "ticker": "GOOGL", "action": "SELL", "direction": "DOWN", "conviction": 55, "edge": "MODERATE", "regime": "NORMAL", "stock_profile": "MEGA_CAP_TECH", "setup": "DOWN_OPPORTUNITY", "score": -0.604, "expected_move": -4.49, "setup_score": 0.680, "setup_rank": 2, "timestamp": "2026-05-11T14:48:00+00:00"},
 ]
 
 DEFAULT_TEXT = "\n".join(
@@ -219,9 +218,12 @@ DEFAULT_TEXT = "\n".join(
         f"{row['conviction']:<5} "
         f"{row['edge']:<9} "
         f"{row['regime']:<9} "
+        f"{row.get('stock_profile', 'NORMAL'):<18} "
+        f"{row.get('setup', 'NORMAL'):<24} "
         f"{row['score']:.3f} "
         f"{row['expected_move']:.2f} "
-        f"{row['position_size']:.3f} "
+        f"{row.get('setup_score', row.get('position_size', 0.0)):.3f} "
+        f"{row.get('setup_rank', 0)} "
         f"{row['timestamp']}"
     )
     for row in THIS_WEEK_SIGNALS
@@ -310,30 +312,55 @@ def parse_model_output(raw_text: str) -> pd.DataFrame:
 
         parts = re.split(r"\s+", line)
 
+        # Old format:
+        # rank ticker action direction conviction edge regime score expected_move setup_score timestamp
+        #
+        # New format:
+        # rank ticker action direction conviction edge regime stock_profile setup score expected_move setup_score setup_rank timestamp
         if len(parts) < 11:
             continue
 
         try:
-            rows.append(
-                {
-                    "Rank": int(parts[0]),
-                    "Ticker": parts[1].upper(),
-                    "Action": parts[2].upper(),
-                    "Direction": parts[3].upper(),
-                    "Conviction": int(float(parts[4])),
-                    "Edge": parts[5].upper(),
-                    "Regime": parts[6].upper(),
-                    "Model Score": float(parts[7]),
-                    "Expected Move %": float(parts[8]),
-                    "Setup Score": float(parts[9]),
-                    "Run Timestamp": parts[10],
-                }
-            )
+            row = {
+                "Rank": int(parts[0]),
+                "Ticker": parts[1].upper(),
+                "Action": parts[2].upper(),
+                "Direction": parts[3].upper(),
+                "Conviction": int(float(parts[4])),
+                "Edge": parts[5].upper(),
+                "Regime": parts[6].upper(),
+            }
+
+            if len(parts) >= 14:
+                row.update(
+                    {
+                        "Stock Profile": parts[7].upper(),
+                        "Setup": parts[8].upper(),
+                        "Model Score": float(parts[9]),
+                        "Expected Move %": float(parts[10]),
+                        "Setup Score": float(parts[11]),
+                        "Setup Rank": int(float(parts[12])),
+                        "Run Timestamp": parts[13],
+                    }
+                )
+            else:
+                row.update(
+                    {
+                        "Stock Profile": "NORMAL",
+                        "Setup": "N/A",
+                        "Model Score": float(parts[7]),
+                        "Expected Move %": float(parts[8]),
+                        "Setup Score": float(parts[9]),
+                        "Setup Rank": None,
+                        "Run Timestamp": parts[10],
+                    }
+                )
+
+            rows.append(row)
         except Exception:
             continue
 
     return normalize_run_timestamps(pd.DataFrame(rows))
-
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_prices(tickers: tuple[str, ...], monday_date: date) -> pd.DataFrame:
@@ -1594,6 +1621,7 @@ def style_tracker(df: pd.DataFrame):
                 "Model Score": "{:.3f}",
                 "Expected Move %": "{:.2f}",
                 "Setup Score": "{:.3f}",
+                "Setup Rank": "{:.0f}",
             },
             na_rep="",
         )
@@ -1793,6 +1821,9 @@ def build_score_relationship_df(tracker_df: pd.DataFrame, path_tracker_df: pd.Da
         "Model Score",
         "Conviction",
         "Expected Move %",
+        "Stock Profile",
+        "Setup",
+        "Setup Rank",
         "Action",
         "Direction",
     ]
@@ -1967,9 +1998,12 @@ def build_excel_download(
         "Conviction",
         "Edge",
         "Regime",
+        "Stock Profile",
+        "Setup",
         "Model Score",
         "Expected Move %",
         "Setup Score",
+        "Setup Rank",
         "Run Timestamp",
         "Run Timestamp UTC",
         "Monday Reference Price",
