@@ -291,6 +291,223 @@ def missed_profit_gap(best_exit_pnl: float, held_pnl: float) -> float:
 
 
 
+def parse_model_run_time_et(row, monday_date: date) -> datetime:
+    """Return the model run time as a naive Eastern datetime.
+
+    This avoids using a future Monday reference price. If a ticker was scored at
+    10:55 ET, the tracker should compare later prices against the nearest usable
+    bar at or before 10:55 ET, not an 11:30-12:30 average that may not exist yet.
+    """
+    raw = None
+    try:
+        raw = row.get("Run Timestamp UTC")
+    except Exception:
+        raw = None
+
+    if raw is None or pd.isna(raw) or str(raw).strip() == "":
+        try:
+            raw = row.get("Run Timestamp")
+        except Exception:
+            raw = None
+
+    if raw is not None and not pd.isna(raw) and str(raw).strip():
+        try:
+            ts = pd.to_datetime(str(raw).strip(), errors="coerce", utc=True)
+            if not pd.isna(ts):
+                return ts.tz_convert(APP_TIMEZONE).tz_localize(None).to_pydatetime()
+        except Exception:
+            pass
+
+    return regular_market_open(monday_date)
+
+
+def reference_price_from_path(
+    stock_path: pd.DataFrame,
+    row,
+    monday_date: date,
+) -> tuple[float | None, datetime | None, str]:
+    """Pick the stock reference price from the model's actual run time.
+
+    Rule:
+    - Prefer the latest regular-hours Monday bar at or before the ticker's model run time.
+    - If that does not exist, use the first regular-hours Monday bar after the run time.
+    - Never use a future fixed 11:30-12:30 window for a live Monday run.
+    """
+    if stock_path is None or stock_path.empty:
+        return None, None, "No intraday path"
+
+    path = stock_path.copy()
+    path["Time"] = pd.to_datetime(path["Time"], errors="coerce")
+    path = path.dropna(subset=["Time", "Price"]).sort_values("Time")
+
+    if path.empty:
+        return None, None, "No usable intraday prices"
+
+    run_time = parse_model_run_time_et(row, monday_date)
+    open_time = regular_market_open(monday_date)
+    close_time = regular_market_close(monday_date)
+
+    monday_rows = path[path["Time"].dt.date == monday_date].copy()
+    regular_rows = monday_rows[
+        (monday_rows["Time"] >= open_time)
+        & (monday_rows["Time"] <= close_time)
+    ].copy()
+
+    if regular_rows.empty:
+        first = path.iloc[0]
+        return float(first["Price"]), first["Time"].to_pydatetime(), "First available intraday price"
+
+    before_or_at_run = regular_rows[regular_rows["Time"] <= run_time]
+    if not before_or_at_run.empty:
+        ref = before_or_at_run.iloc[-1]
+        return float(ref["Price"]), ref["Time"].to_pydatetime(), "Run-time intraday bar"
+
+    after_run = regular_rows[regular_rows["Time"] > run_time]
+    if not after_run.empty:
+        ref = after_run.iloc[0]
+        return float(ref["Price"]), ref["Time"].to_pydatetime(), "First bar after run time"
+
+    ref = regular_rows.iloc[-1]
+    return float(ref["Price"]), ref["Time"].to_pydatetime(), "Last regular-hours Monday bar"
+
+
+def build_tracker_from_price_paths(
+    model_df: pd.DataFrame,
+    path_df: pd.DataFrame,
+    monday_date: date,
+) -> pd.DataFrame:
+    """Build the main tracker using the model run time as the entry/reference time."""
+    rows = []
+
+    if model_df.empty:
+        return pd.DataFrame()
+
+    for _, model_row in model_df.iterrows():
+        ticker = str(model_row.get("Ticker", "")).upper()
+        stock_path = path_df[path_df["Ticker"] == ticker].copy() if not path_df.empty else pd.DataFrame()
+        ref_price, ref_time, ref_source = reference_price_from_path(stock_path, model_row, monday_date)
+
+        current_price = None
+        price_error = ""
+        if not stock_path.empty:
+            stock_path["Time"] = pd.to_datetime(stock_path["Time"], errors="coerce")
+            stock_path = stock_path.dropna(subset=["Time", "Price"]).sort_values("Time")
+            if not stock_path.empty:
+                current_price = float(stock_path["Price"].iloc[-1])
+        else:
+            price_error = "No price path returned"
+
+        row = model_row.to_dict()
+        row["Monday Reference Price"] = ref_price
+        row["Reference Time"] = ref_time
+        row["Current Price"] = current_price
+        row["Reference Price Source"] = ref_source
+        row["Price Error"] = price_error
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
+
+    out["Change Since Monday %"] = (
+        (out["Current Price"] - out["Monday Reference Price"])
+        / out["Monday Reference Price"]
+        * 100
+    )
+
+    def actual_direction(change):
+        if pd.isna(change):
+            return "N/A"
+        if change > 0:
+            return "UP"
+        if change < 0:
+            return "DOWN"
+        return "FLAT"
+
+    out["Actual Direction So Far"] = out["Change Since Monday %"].apply(actual_direction)
+
+    def correct(row):
+        predicted = str(row.get("Direction", "")).upper()
+        actual = str(row.get("Actual Direction So Far", "")).upper()
+
+        if actual == "N/A":
+            return "N/A"
+        if predicted == "UP" and actual == "UP":
+            return "YES"
+        if predicted == "DOWN" and actual == "DOWN":
+            return "YES"
+        if predicted == "NEUTRAL" and actual == "FLAT":
+            return "YES"
+        return "NO"
+
+    out["Correct So Far"] = out.apply(correct, axis=1)
+    return out
+
+
+def build_position_return_series_from_paths(
+    model_df: pd.DataFrame,
+    path_df: pd.DataFrame,
+    monday_date: date,
+) -> pd.DataFrame:
+    """Build portfolio chart lines from the same run-time reference used by the tables."""
+    if model_df.empty or path_df.empty:
+        return pd.DataFrame()
+
+    buy_series = []
+    sell_series = []
+
+    for _, row in model_df.iterrows():
+        ticker = str(row.get("Ticker", "")).upper()
+        action = str(row.get("Action", "")).upper()
+        direction = str(row.get("Direction", "")).upper()
+
+        if not ((action == "BUY" and direction == "UP") or (action == "SELL" and direction == "DOWN")):
+            continue
+
+        stock_path = path_df[path_df["Ticker"] == ticker].copy()
+        if stock_path.empty:
+            continue
+
+        ref_price, ref_time, _ = reference_price_from_path(stock_path, row, monday_date)
+        if ref_price is None or ref_time is None:
+            continue
+
+        stock_path["Time"] = pd.to_datetime(stock_path["Time"], errors="coerce")
+        stock_path = stock_path.dropna(subset=["Time", "Price"]).sort_values("Time")
+        stock_path = stock_path[stock_path["Time"] >= ref_time].copy()
+        if stock_path.empty:
+            continue
+
+        returns = (stock_path["Price"].astype(float) - float(ref_price)) / float(ref_price) * 100
+        returns.index = stock_path["Time"]
+        returns.name = ticker
+
+        if action == "BUY" and direction == "UP":
+            buy_series.append(returns)
+        elif action == "SELL" and direction == "DOWN":
+            short_returns = -returns
+            short_returns.name = ticker
+            sell_series.append(short_returns)
+
+    chart_parts = []
+
+    if buy_series:
+        buy_df = pd.concat(buy_series, axis=1).sort_index()
+        chart_parts.append(buy_df.mean(axis=1).rename("BUY basket"))
+
+    if sell_series:
+        sell_df = pd.concat(sell_series, axis=1).sort_index()
+        chart_parts.append(sell_df.mean(axis=1).rename("SELL short basket"))
+
+    if buy_series or sell_series:
+        combined_df = pd.concat(buy_series + sell_series, axis=1).sort_index()
+        chart_parts.append(combined_df.mean(axis=1).rename("Combined active basket"))
+
+    if not chart_parts:
+        return pd.DataFrame()
+
+    return pd.concat(chart_parts, axis=1).sort_index().dropna(how="all")
+
+
+
 APP_TIMEZONE = "America/New_York"
 
 
@@ -757,12 +974,22 @@ def build_weekly_price_tracker(
 
         stock_path["Move %"] = (stock_path["Price"] - monday_price) / monday_price * 100
 
-        # Count the week after the Monday reference setup period.
-        # Do not throw away the whole Monday, or a Monday live run will incorrectly show 0 true.
-        reference_cutoff = reference_cutoff_from_path(stock_path, monday_date)
-        after_reference_path = stock_path[stock_path["Time"] >= reference_cutoff].copy()
-        if after_reference_path.empty:
+        # Count prices after the actual model/reference bar. The reference bar itself
+        # does not count as a win; otherwise the app can mark tiny reference-window
+        # noise as "true during week" on Monday morning.
+        reference_time = row.get("Reference Time")
+        if pd.isna(reference_time):
+            _, reference_time, _ = reference_price_from_path(stock_path, row, monday_date)
+        reference_time = pd.to_datetime(reference_time, errors="coerce")
+
+        if pd.isna(reference_time):
             after_reference_path = stock_path.copy()
+        else:
+            after_reference_path = stock_path[stock_path["Time"] > reference_time].copy()
+
+        if after_reference_path.empty:
+            # Keep final/held calculations alive, but do not create fake YES rows.
+            after_reference_path = stock_path.iloc[0:0].copy()
 
         path_first_time = after_reference_path["Time"].min() if not after_reference_path.empty else stock_path["Time"].min()
         path_last_time = stock_path["Time"].max()
@@ -2374,10 +2601,9 @@ with tab_dashboard:
     )
 
     with st.spinner("Fetching prices and calculating performance..."):
-        price_df = fetch_prices(tickers, monday_date)
-        tracker_df = add_tracking_columns(model_df, price_df)
-        portfolio_chart_df = fetch_position_return_series(model_rows, monday_date)
         weekly_path_price_df = fetch_week_price_paths(tickers, monday_date)
+        tracker_df = build_tracker_from_price_paths(model_df, weekly_path_price_df, monday_date)
+        portfolio_chart_df = build_position_return_series_from_paths(model_df, weekly_path_price_df, monday_date)
         weekly_path_tracker_df = build_weekly_price_tracker(tracker_df, weekly_path_price_df)
 
     active_tracker_df = filter_active_trade_rows(tracker_df)
